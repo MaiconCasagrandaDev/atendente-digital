@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "tsx watch --env-file=.env src/server.ts",
+    "seed": "tsx --env-file=.env src/seed.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
