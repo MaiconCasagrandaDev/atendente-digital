@@ -1,7 +1,15 @@
 import { Router } from "express";
+import { z } from "zod";
 import { prisma } from "../lib/prisma";
+import { createProductSchema, updateProductSchema } from "../schemas/product";
 
 export const productsRouter = Router();
+
+// Converte o :id da URL em número, ou null se for inválido
+function parseId(value: string | undefined) {
+  const id = Number(value);
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
 
 // GET /products: lista os produtos disponíveis
 productsRouter.get("/", async (_req, res) => {
@@ -11,27 +19,6 @@ productsRouter.get("/", async (_req, res) => {
   });
   res.json(products);
 });
-
-// POST /products: cria um produto
-productsRouter.post("/", async (req, res) => {
-  const { name, description, price, category } = req.body;
-
-  if (!name || price === undefined || !category) {
-    res.status(400).json({ error: "name, price e category são obrigatórios" });
-    return;
-  }
-
-  const product = await prisma.product.create({
-    data: { name, description, price, category },
-  });
-  res.status(201).json(product);
-});
-
-// Converte o :id da URL em número, ou null se for inválido
-function parseId(value: string | undefined) {
-  const id = Number(value);
-  return Number.isInteger(id) && id > 0 ? id : null;
-}
 
 // GET /products/:id: busca um produto
 productsRouter.get("/:id", async (req, res) => {
@@ -49,11 +36,29 @@ productsRouter.get("/:id", async (req, res) => {
   res.json(product);
 });
 
+// POST /products: cria um produto
+productsRouter.post("/", async (req, res) => {
+  const result = createProductSchema.safeParse(req.body);
+  if (!result.success) {
+    res.status(400).json({ errors: z.flattenError(result.error) });
+    return;
+  }
+
+  const product = await prisma.product.create({ data: result.data });
+  res.status(201).json(product);
+});
+
 // PATCH /products/:id: edita só os campos enviados
 productsRouter.patch("/:id", async (req, res) => {
   const id = parseId(req.params.id);
   if (!id) {
     res.status(400).json({ error: "id inválido" });
+    return;
+  }
+
+  const result = updateProductSchema.safeParse(req.body);
+  if (!result.success) {
+    res.status(400).json({ errors: z.flattenError(result.error) });
     return;
   }
 
@@ -63,11 +68,7 @@ productsRouter.patch("/:id", async (req, res) => {
     return;
   }
 
-  const { name, description, price, category, available } = req.body;
-  const product = await prisma.product.update({
-    where: { id },
-    data: { name, description, price, category, available },
-  });
+  const product = await prisma.product.update({ where: { id }, data: result.data });
   res.json(product);
 });
 
