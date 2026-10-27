@@ -1,6 +1,7 @@
 import { Prisma } from "../generated/prisma/client";
 import { prisma } from "../lib/prisma";
 import { AppError } from "../lib/errors";
+import type { ConfirmOrderInput, OrderStatusValue } from "../schemas/order";
 
 // Sempre devolve o pedido com os itens e os produtos
 const includeItems = {
@@ -95,4 +96,76 @@ export async function removeItem(orderId: number, itemId: number) {
 
   await prisma.orderItem.delete({ where: { id: itemId } });
   return recalcTotal(orderId);
+}
+
+export async function confirmOrder(orderId: number, data: ConfirmOrderInput) {
+  const order = await getDraft(orderId);
+
+  const itemCount = await prisma.orderItem.count({ where: { orderId } });
+  if (itemCount === 0) throw new AppError(409, "O carrinho está vazio");
+
+  if (data.changeFor !== undefined && order.total.greaterThan(data.changeFor)) {
+    throw new AppError(
+      400,
+      `O troco precisa ser para um valor maior ou igual ao total (R$ ${order.total.toFixed(2)})`,
+    );
+  }
+
+  const address = data.deliveryType === "DELIVERY" ? data.address : null;
+
+  // Guarda o endereço no cliente ANTES de confirmar,
+  // para a resposta já trazer o cliente atualizado
+  if (address) {
+    await prisma.customer.update({ where: { id: order.customerId }, data: { address } });
+  }
+
+  return prisma.order.update({
+    where: { id: orderId },
+    data: {
+      status: "CONFIRMED",
+      deliveryType: data.deliveryType,
+      address,
+      paymentMethod: data.paymentMethod,
+      changeFor: data.changeFor ?? null,
+      notes: data.notes ?? null,
+    },
+    include: { ...includeItems, customer: true },
+  });
+}
+
+// Para onde cada status pode ir
+const nextStatuses: Record<OrderStatusValue, OrderStatusValue[]> = {
+  DRAFT: ["CANCELED"],
+  CONFIRMED: ["PREPARING", "CANCELED"],
+  PREPARING: ["OUT_FOR_DELIVERY", "DELIVERED", "CANCELED"],
+  OUT_FOR_DELIVERY: ["DELIVERED"],
+  DELIVERED: [],
+  CANCELED: [],
+};
+
+export async function updateStatus(orderId: number, status: OrderStatusValue) {
+  const order = await prisma.order.findUnique({ where: { id: orderId } });
+  if (!order) throw new AppError(404, "Pedido não encontrado");
+
+  if (!nextStatuses[order.status].includes(status)) {
+    throw new AppError(409, `Não é possível mudar de ${order.status} para ${status}`);
+  }
+  if (status === "OUT_FOR_DELIVERY" && order.deliveryType === "PICKUP") {
+    throw new AppError(409, "Pedido para retirada não sai para entrega");
+  }
+
+  return prisma.order.update({
+    where: { id: orderId },
+    data: { status },
+    include: { ...includeItems, customer: true },
+  });
+}
+
+// Lista os pedidos; sem filtro, esconde os carrinhos (DRAFT)
+export async function listOrders(status?: OrderStatusValue) {
+  return prisma.order.findMany({
+    where: status ? { status } : { status: { not: "DRAFT" } },
+    orderBy: { createdAt: "desc" },
+    include: { ...includeItems, customer: true },
+  });
 }
