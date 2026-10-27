@@ -1,103 +1,83 @@
 # Atendente Digital
 
-API para gestão de pedidos e catálogo de produtos de um atendimento digital, com foco em WhatsApp/atendimento por conversa.
+API de pedidos para um atendente virtual com IA no WhatsApp. O cliente conversa com o bot, a IA monta o pedido usando o cardápio real do banco, e o dono do negócio acompanha tudo pela API (e, em breve, por um painel).
 
-## Visão geral
+A demonstração usa uma lanchonete fictícia, mas o modelo serve para outros negócios que vendem por WhatsApp.
 
-Este projeto é uma aplicação backend em Node.js com Express e Prisma para:
+> **Status:** em desenvolvimento. A API de cardápio e pedidos está pronta; a integração com o WhatsApp e a IA estão em andamento.
 
-- gerenciar produtos
-- registrar clientes
-- criar e acompanhar pedidos
-- controlar status de pedido, entrega e pagamento
-- expor endpoints REST para integração com frontend ou WhatsApp
+## Funcionalidades
+
+- **Cardápio:** criar, listar, buscar, editar e desativar produtos (desativar em vez de apagar preserva o histórico dos pedidos)
+- **Carrinho:** cada cliente, identificado pelo telefone do WhatsApp, tem um carrinho em aberto; itens iguais com a mesma observação são somados
+- **Preço congelado:** cada item guarda o preço da hora da compra, então mudanças no cardápio não alteram pedidos antigos
+- **Total calculado com `Decimal`:** sem erros de arredondamento de ponto flutuante
+- **Confirmação do pedido:** entrega ou retirada, endereço, forma de pagamento (Pix, cartão ou dinheiro) e troco, com validação das regras de negócio
+- **Fluxo de status:** `DRAFT → CONFIRMED → PREPARING → OUT_FOR_DELIVERY → DELIVERED`, com cancelamento; transições inválidas são bloqueadas
+- **Erros padronizados:** validação com Zod e tratamento central de erros com status HTTP corretos (400, 404, 409)
 
 ## Stack
 
-- Node.js
-- TypeScript
-- Express
-- Prisma ORM
-- PostgreSQL
-- Zod para validação
+- **Node.js + TypeScript**
+- **Express 5**
+- **PostgreSQL + Prisma 7** (com `@prisma/adapter-pg`)
+- **Zod** para validação
+- **tsx** para rodar TypeScript em desenvolvimento
 
-## Estrutura principal
+Próximas etapas: WhatsApp Cloud API, IA com function calling e painel em React + Vite.
 
-- `src/server.ts` — bootstrap da aplicação
-- `src/routes/` — rotas da API
-- `src/lib/` — utilitários e regras de negócio
-- `prisma/schema.prisma` — schema do banco de dados
+## Estrutura
 
-## Pré-requisitos
+```
+prisma/
+  schema.prisma        # modelos do banco
+  migrations/          # histórico das migrations
+src/
+  server.ts            # inicialização e tratamento de erros
+  seed.ts              # cardápio de exemplo
+  routes/              # rotas HTTP (finas: validam e chamam os services)
+  services/            # regras de negócio dos pedidos
+  schemas/             # schemas Zod de validação
+  lib/                 # conexão com o Prisma, erros e helpers
+```
 
-- Node.js 20+
-- PostgreSQL
-- npm ou pnpm
+A lógica fica nos **services**, separada das rotas. Assim, a IA poderá chamar as mesmas funções (adicionar item, confirmar pedido) diretamente, sem passar por HTTP.
 
-## Configuração
+## Como rodar
 
-1. Instale as dependências:
+**Pré-requisitos:** Node.js 20.6+ e PostgreSQL.
+
+1. Clone e instale as dependências:
 
    ```bash
+   git clone https://github.com/MaiconCasagrandaDev/atendente-digital.git
+   cd atendente-digital
    npm install
    ```
 
-2. Crie um arquivo `.env` na raiz com a URL do banco:
-
-   ```env
-   DATABASE_URL="postgresql://usuario:senha@localhost:5432/atendente_digital?schema=public"
-   PORT=3000
-   ```
-
-3. Gere o client do Prisma:
+2. Crie o `.env` a partir do exemplo e ajuste a URL do banco:
 
    ```bash
-   npx prisma generate
+   cp .env.example .env
    ```
 
-4. Execute as migrações:
+3. Crie as tabelas e gere o client do Prisma:
 
    ```bash
    npx prisma migrate dev
+   npx prisma generate
    ```
 
-## Scripts
+4. Popule o cardápio de exemplo:
 
-```bash
-npm run dev
-```
+   ```bash
+   npm run seed
+   ```
 
-Inicia a API em modo desenvolvimento com hot reload.
+5. Suba a API:
 
-## Endpoints principais
+   ```bash
+   npm run dev
+   ```
 
-### Health check
-
-```http
-GET /health
-```
-
-### Produtos
-
-```http
-GET /products
-POST /products
-GET /products/:id
-PUT /products/:id
-DELETE /products/:id
-```
-
-### Pedidos
-
-```http
-GET /orders
-POST /orders
-GET /orders/:id
-PUT /orders/:id
-DELETE /orders/:id
-```
-
-## Observações
-
-O projeto já está estruturado para uso com Prisma e Express, e o banco principal é PostgreSQL. O README inicial era apenas um placeholder e não descrevia o projeto de forma útil para desenvolvimento ou onboarding.
-
+   A API fica em
