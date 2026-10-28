@@ -53,6 +53,7 @@ model Customer {
   name      String?
   address   String?  // último endereço usado
   orders    Order[]
+  messages  Message[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -89,4 +90,22 @@ model OrderItem {
   notes     String? // ex.: "sem cebola"
 
   @@map("order_items")
+}
+
+enum MessageDirection {
+  INBOUND  // cliente -> bot
+  OUTBOUND // bot -> cliente
+}
+
+model Message {
+  id          Int              @id @default(autoincrement())
+  customerId  Int
+  customer    Customer         @relation(fields: [customerId], references: [id])
+  direction   MessageDirection
+  waMessageId String?          @unique // id da Meta (wamid); evita salvar repetido
+  text        String
+  createdAt   DateTime         @default(now())
+
+  @@index([customerId, createdAt])
+  @@map("messages")
 }

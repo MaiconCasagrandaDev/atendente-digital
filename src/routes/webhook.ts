@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { webhookSchema } from "../schemas/webhook";
 import { extractTextMessages } from "../services/whatsapp";
+import { saveIncomingMessage } from "../services/messages";
 
 export const webhookRouter = Router();
 
@@ -20,7 +21,7 @@ webhookRouter.get("/", (req, res) => {
 });
 
 // POST /webhook: cada mensagem recebida chega aqui
-webhookRouter.post("/", (req, res) => {
+webhookRouter.post("/", async (req, res) => {
   // Responde rápido: se demorar, a Meta reenvia o mesmo evento
   res.sendStatus(200);
 
@@ -31,6 +32,16 @@ webhookRouter.post("/", (req, res) => {
   }
 
   for (const message of extractTextMessages(result.data)) {
-    console.log(`Mensagem de ${message.name ?? "sem nome"} (${message.phone}): ${message.text}`);
+    try {
+      const saved = await saveIncomingMessage(message);
+      if (!saved) {
+        console.log(`Mensagem ${message.messageId} repetida, ignorada`);
+        continue;
+      }
+      console.log(`Mensagem salva de ${message.phone}: ${message.text}`);
+    } catch (error) {
+      // A resposta já foi enviada, então o erro só pode ser registrado
+      console.error("Erro ao salvar mensagem", error);
+    }
   }
 });
