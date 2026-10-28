@@ -2,6 +2,7 @@ import express, { type ErrorRequestHandler } from "express";
 import { productsRouter } from "./routes/products";
 import { ordersRouter } from "./routes/orders";
 import { AppError } from "./lib/errors";
+import { webhookRouter } from "./routes/webhook";
 
 const app = express();
 app.use(express.json());
@@ -12,6 +13,7 @@ app.get("/health", (_req, res) => {
 
 app.use("/products", productsRouter);
 app.use("/orders", ordersRouter);
+app.use("/webhook", webhookRouter);
 
 // Tratamento de erros: precisa ficar depois das rotas
 const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {

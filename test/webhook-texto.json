@@ -1,0 +1,32 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "1443909111001901",
+      "changes": [
+        {
+          "field": "messages",
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "display_phone_number": "15552012069",
+              "phone_number_id": "1454746651046836"
+            },
+            "contacts": [
+              { "profile": { "name": "Cliente Teste" }, "wa_id": "555499999999" }
+            ],
+            "messages": [
+              {
+                "from": "555499999999",
+                "id": "wamid.TESTE1",
+                "timestamp": "1792511510",
+                "type": "text",
+                "text": { "body": "quero 2 x-burguer" }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
