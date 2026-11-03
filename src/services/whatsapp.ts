@@ -35,3 +35,35 @@ export function extractTextMessages(payload: WebhookPayload): IncomingMessage[] 
 
   return result;
 }
+
+// Envia um texto pelo WhatsApp; devolve o id da mensagem
+export async function sendText(to: string, body: string): Promise<string> {
+  if (process.env.WHATSAPP_MODE !== "live") {
+    console.log(`[SIMULAÇÃO] Bot -> ${to}: ${body}`);
+    return `sim.${Date.now()}`;
+  }
+
+  const version = process.env.GRAPH_VERSION ?? "v25.0";
+  const url = `https://graph.facebook.com/${version}/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`;
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      to,
+      type: "text",
+      text: { body },
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Erro do WhatsApp (${response.status}): ${await response.text()}`);
+  }
+
+  const data = (await response.json()) as { messages?: { id: string }[] };
+  return data.messages?.[0]?.id ?? "";
+}

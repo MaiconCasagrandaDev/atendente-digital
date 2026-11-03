@@ -3,6 +3,7 @@ import { productsRouter } from "./routes/products";
 import { ordersRouter } from "./routes/orders";
 import { AppError } from "./lib/errors";
 import { webhookRouter } from "./routes/webhook";
+import { devRouter } from "./routes/dev";
 
 const app = express();
 app.use(express.json());
@@ -14,6 +15,11 @@ app.get("/health", (_req, res) => {
 app.use("/products", productsRouter);
 app.use("/orders", ordersRouter);
 app.use("/webhook", webhookRouter);
+
+// Rota de testes: só existe fora do modo "live"
+if (process.env.WHATSAPP_MODE !== "live") {
+  app.use("/dev", devRouter);
+}
 
 // Tratamento de erros: precisa ficar depois das rotas
 const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {

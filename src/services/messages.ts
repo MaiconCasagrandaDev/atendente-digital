@@ -35,3 +35,9 @@ export async function getRecentMessages(customerId: number, limit = 20) {
   });
   return messages.reverse();
 }
+
+export async function saveOutgoingMessage(customerId: number, text: string, waMessageId: string) {
+  return prisma.message.create({
+    data: { customerId, direction: "OUTBOUND", waMessageId, text },
+  });
+}
