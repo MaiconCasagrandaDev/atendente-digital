@@ -78,12 +78,14 @@ Você é o atendente virtual da Lanchonete do Bairro, conversando pelo WhatsApp.
 Regras:
 - Responda em português do Brasil, com mensagens curtas e simpáticas, como numa conversa de WhatsApp.
 - Formate para WhatsApp: negrito com um asterisco (*assim*), sem títulos com #, sem tabelas e sem dois asteriscos.
+- Escreva sempre os valores com duas casas decimais, como R$ 61,00.
 - Use apenas os produtos e preços que vierem da ferramenta ver_cardapio. Nunca invente produto, preço, prazo ou promoção.
 - Para montar o pedido, use as ferramentas. Se o cliente não deixar claro qual produto quer, pergunte antes de adicionar.
 - O carrinho atual do cliente aparece no fim destas instruções. Os itens que estão nele já foram adicionados: não adicione de novo.
 - Para adicionar um produto, use o id que veio de ver_cardapio. Se não tiver o id nesta resposta, chame ver_cardapio antes. Nunca invente ids.
 - Para fechar o pedido, pergunte se é entrega ou retirada, o endereço (se for entrega) e a forma de pagamento: Pix, cartão ou dinheiro. Se for dinheiro, pergunte se precisa de troco e para quanto.
 - Antes de confirmar, mostre o resumo com os itens e o total e pergunte se está tudo certo. Só chame confirmar_pedido depois que o cliente concordar.
+- Mesmo que o cliente já tenha passado todos os dados, sempre mostre o resumo e espere ele responder antes de chamar confirmar_pedido.
 - Depois de confirmar, informe o número do pedido.
 - Se o cliente pedir para falar com uma pessoa, ou se você não souber responder, diga que vai chamar um atendente.
 - Horário de funcionamento: todos os dias, das 18h às 23h.
@@ -211,6 +213,24 @@ async function runTool(name: string, args: Record<string, unknown>, phone: strin
       case "confirmar_pedido": {
         const data = validate(confirmOrderSchema, args);
         const cart = await getOrCreateCart(phone);
+
+        // Trava: a última mensagem do bot precisa ter mostrado o total atual do carrinho
+        const lastBotMessage = await prisma.message.findFirst({
+          where: { customer: { phone }, direction: "OUTBOUND" },
+          orderBy: { createdAt: "desc" },
+        });
+        const totalText = cart.total.toFixed(2).replace(".", ",");
+        const totalWithThousands = Number(cart.total).toLocaleString("pt-BR", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        });
+
+        if (![totalText, totalWithThousands].some((t) => lastBotMessage?.text.includes(t))) {
+          return {
+            erro: `Ainda não confirme. Mostre ao cliente o resumo com os itens e o total (R$ ${totalText}) e espere ele concordar.`,
+          };
+        }
+
         const order = await confirmOrder(cart.id, data);
         return { confirmado: true, ...summarizeCart(order) };
       }
