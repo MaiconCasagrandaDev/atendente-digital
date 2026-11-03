@@ -16,9 +16,13 @@ app.use("/products", productsRouter);
 app.use("/orders", ordersRouter);
 app.use("/webhook", webhookRouter);
 
-// Rota de testes: só existe fora do modo "live"
+// Rotas de teste e simulador: só existem fora do modo "live"
 if (process.env.WHATSAPP_MODE !== "live") {
   app.use("/dev", devRouter);
+
+  app.get("/simulador", (_req, res) => {
+    res.sendFile("simulador.html", { root: "public" });
+  });
 }
 
 // Tratamento de erros: precisa ficar depois das rotas
