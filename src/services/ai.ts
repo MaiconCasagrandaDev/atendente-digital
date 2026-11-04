@@ -25,8 +25,10 @@ const MODELS = (process.env.GEMINI_MODEL ?? "gemini-3.8-flash")
   .map((name) => name.trim())
   .filter(Boolean);
 
-// O último modelo que respondeu: as próximas mensagens começam por ele
+// Modelo reserva que respondeu por último, lembrado por alguns minutos
 let preferredModel: string | undefined;
+let preferredUntil = 0;
+const PREFERRED_TTL_MS = 5 * 60_000; // 5 minutos
 
 type GenerateParams = Omit<Parameters<typeof ai.models.generateContent>[0], "model">;
 
@@ -52,16 +54,25 @@ async function callModel(model: string, params: GenerateParams) {
 
 // Primeira chamada da resposta: procura um modelo que esteja respondendo
 async function pickModelAndGenerate(params: GenerateParams) {
-  const order = preferredModel
-    ? [preferredModel, ...MODELS.filter((model) => model !== preferredModel)]
+  const usePreferred = preferredModel !== undefined && Date.now() < preferredUntil;
+  const order = usePreferred
+    ? [preferredModel!, ...MODELS.filter((model) => model !== preferredModel)]
     : MODELS;
 
   let lastError: unknown;
   for (const model of order) {
     try {
       const response = await callModel(model, params);
-      if (model !== preferredModel) console.log(`[IA] usando o modelo ${model}`);
-      preferredModel = model;
+      console.log(`[IA] usando o modelo ${model}`);
+
+      if (model === MODELS[0]) {
+        // O principal respondeu: não precisa lembrar de reserva
+        preferredModel = undefined;
+      } else {
+        preferredModel = model;
+        preferredUntil = Date.now() + PREFERRED_TTL_MS;
+      }
+
       return { model, response };
     } catch (error) {
       if (!isTemporaryError(error)) throw error;
