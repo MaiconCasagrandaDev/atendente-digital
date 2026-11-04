@@ -10,7 +10,7 @@ A demonstração usa uma lanchonete fictícia, mas o projeto serve para qualquer
 
 | Cardápio digital | Conversa com o atendente |
 |---|---|
-| ![Cardápio digital](docs/cardapio.png) | <!-- ![Conversa](docs/conversa.png) --> _em breve_ |
+| ![Cardápio digital](docs/cardapio.png) | ![Conversa com o atendente](docs/conversa.png) |
 
 ## Como funciona
 
