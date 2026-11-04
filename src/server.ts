@@ -8,6 +8,9 @@ import { devRouter } from "./routes/dev";
 const app = express();
 app.use(express.json());
 
+// Fotos do cardápio, em public/imagens
+app.use("/imagens", express.static("public/imagens"));
+
 app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
 });

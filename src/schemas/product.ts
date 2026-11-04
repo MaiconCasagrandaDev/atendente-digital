@@ -6,6 +6,7 @@ export const createProductSchema = z.object({
     .trim()
     .min(1, "name não pode ser vazio"),
   description: z.string().trim().optional(),
+  imageUrl: z.string().trim().min(1, "imageUrl não pode ser vazio").optional(),
   price: z
     .number({ error: "price é obrigatório e deve ser um número" })
     .positive("price deve ser maior que zero"),
