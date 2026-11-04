@@ -34,10 +34,10 @@ type GenerateParams = Omit<Parameters<typeof ai.models.generateContent>[0], "mod
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Erros passageiros: sobrecarga (503), limite (429), erro interno (500) ou sem resposta
+// Erros passageiros: limite (429), qualquer erro do servidor do Google (5xx) ou sem resposta
 function isTemporaryError(error: unknown) {
   const status = (error as { status?: number }).status;
-  return status === undefined || status === 429 || status === 500 || status === 503;
+  return status === undefined || status === 429 || status >= 500;
 }
 
 // Chama um modelo específico, com uma nova tentativa se o erro for passageiro
@@ -90,10 +90,10 @@ Regras:
 - Responda em português do Brasil, com mensagens curtas e simpáticas, como numa conversa de WhatsApp.
 - Formate para WhatsApp: negrito com um asterisco (*assim*), sem títulos com #, sem tabelas e sem dois asteriscos.
 - Escreva sempre os valores com duas casas decimais, como R$ 61,00.
-- Use apenas os produtos e preços que vierem da ferramenta ver_cardapio. Nunca invente produto, preço, prazo ou promoção.
+- Use apenas os produtos e preços do cardápio que aparece no fim destas instruções. Nunca invente produto, preço, prazo ou promoção.
 - Para montar o pedido, use as ferramentas. Se o cliente não deixar claro qual produto quer, pergunte antes de adicionar.
 - O carrinho atual do cliente aparece no fim destas instruções. Os itens que estão nele já foram adicionados: não adicione de novo.
-- Para adicionar um produto, use o id que veio de ver_cardapio. Se não tiver o id nesta resposta, chame ver_cardapio antes. Nunca invente ids.
+- Para adicionar um produto, use o id que aparece no cardápio. Nunca invente ids.
 - Para fechar o pedido, pergunte se é entrega ou retirada, o endereço (se for entrega) e a forma de pagamento: Pix, cartão ou dinheiro. Se for dinheiro, pergunte se precisa de troco e para quanto.
 - Antes de confirmar, mostre o resumo com os itens e o total e pergunte se está tudo certo. Só chame confirmar_pedido depois que o cliente concordar.
 - Mesmo que o cliente já tenha passado todos os dados, sempre mostre o resumo e espere ele responder antes de chamar confirmar_pedido.
@@ -269,11 +269,28 @@ export async function generateReply(customerId: number, phone: string) {
   // A conversa enviada para a IA precisa começar por uma mensagem do cliente
   while (contents[0]?.role === "model") contents.shift();
 
-  // Mostra à IA o carrinho como está agora no banco
+  // Mostra à IA o cardápio e o carrinho como estão agora no banco
+  const products = await prisma.product.findMany({
+    where: { available: true },
+    orderBy: [{ category: "asc" }, { name: "asc" }],
+  });
+  const menu = products
+    .map((p) => {
+      const price = p.price.toFixed(2).replace(".", ",");
+      const description = p.description ? ` - ${p.description}` : "";
+      return `- id ${p.id}: ${p.name} (${p.category}) - R$ ${price}${description}`;
+    })
+    .join("\n");
+
   const cart = await getOrCreateCart(phone);
+
   const replyConfig: GenerateContentConfig = {
     ...config,
-    systemInstruction: `${SYSTEM_PROMPT}\n\nCarrinho atual do cliente (já salvo no sistema): ${JSON.stringify(summarizeCart(cart))}`,
+    systemInstruction: [
+      SYSTEM_PROMPT,
+      `Cardápio atual:\n${menu}`,
+      `Carrinho atual do cliente (já salvo no sistema): ${JSON.stringify(summarizeCart(cart))}`,
+    ].join("\n\n"),
   };
 
   // Escolhido na primeira chamada e mantido até o fim desta resposta
