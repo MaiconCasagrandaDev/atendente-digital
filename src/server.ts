@@ -11,6 +11,20 @@ app.use(express.json());
 // Fotos do cardápio, em public/imagens
 app.use("/imagens", express.static("public/imagens"));
 
+// Dados públicos da loja, usados pelo cardápio
+app.get("/store", (_req, res) => {
+  const live = process.env.WHATSAPP_MODE === "live";
+  res.json({
+    name: process.env.STORE_NAME ?? "Minha Loja",
+    whatsappNumber: live ? process.env.WHATSAPP_DISPLAY_NUMBER || null : null,
+  });
+});
+
+// Cardápio digital
+app.get("/cardapio", (_req, res) => {
+  res.sendFile("cardapio.html", { root: "public" });
+});
+
 app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
 });

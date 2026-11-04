@@ -25,10 +25,24 @@ const MODELS = (process.env.GEMINI_MODEL ?? "gemini-3.8-flash")
   .map((name) => name.trim())
   .filter(Boolean);
 
+// Endereço público sem barra no fim, para o link não sair com "//cardapio"
+const PUBLIC_URL = process.env.PUBLIC_URL?.replace(/\/+$/, "");
+
 // Modelo reserva que respondeu por último, lembrado por alguns minutos
 let preferredModel: string | undefined;
 let preferredUntil = 0;
 const PREFERRED_TTL_MS = 5 * 60_000; // 5 minutos
+
+// Modelos sem cota diária, e até quando
+const exhaustedUntil = new Map<string, number>();
+
+// Se o erro for de cota diária, devolve quanto tempo esperar (em ms)
+function dailyQuotaWaitMs(error: unknown): number | null {
+  const message = String((error as { message?: unknown }).message ?? "");
+  if (!message.includes("PerDay")) return null;
+  const match = message.match(/"retryDelay":"(\d+)s"/);
+  return match ? Number(match[1]) * 1000 : 60 * 60_000;
+}
 
 type GenerateParams = Omit<Parameters<typeof ai.models.generateContent>[0], "model">;
 
@@ -45,7 +59,7 @@ async function callModel(model: string, params: GenerateParams) {
   try {
     return await ai.models.generateContent({ ...params, model });
   } catch (error) {
-    if (!isTemporaryError(error)) throw error;
+    if (!isTemporaryError(error) || dailyQuotaWaitMs(error)) throw error;
     console.warn(`Gemini ${model} indisponível, tentando de novo...`);
     await sleep(1500);
     return ai.models.generateContent({ ...params, model });
@@ -58,9 +72,11 @@ async function pickModelAndGenerate(params: GenerateParams) {
   const order = usePreferred
     ? [preferredModel!, ...MODELS.filter((model) => model !== preferredModel)]
     : MODELS;
+  const available = order.filter((model) => (exhaustedUntil.get(model) ?? 0) < Date.now());
+  if (available.length === 0) throw new Error("Todos os modelos estão sem cota hoje");
 
   let lastError: unknown;
-  for (const model of order) {
+  for (const model of available) {
     try {
       const response = await callModel(model, params);
       console.log(`[IA] usando o modelo ${model}`);
@@ -75,7 +91,23 @@ async function pickModelAndGenerate(params: GenerateParams) {
 
       return { model, response };
     } catch (error) {
+      // Modelo indisponível para a conta (403) ou inexistente (404): pula por 24 horas
+      const status = (error as { status?: number }).status;
+      if (status === 403 || status === 404) {
+        exhaustedUntil.set(model, Date.now() + 24 * 60 * 60_000);
+        console.warn(`Gemini ${model} indisponível para esta conta (${status}), pulando por 24 horas`);
+        lastError = error;
+        continue;
+      }
+
       if (!isTemporaryError(error)) throw error;
+      const wait = dailyQuotaWaitMs(error);
+      if (wait) {
+        exhaustedUntil.set(model, Date.now() + wait);
+        console.warn(`Gemini ${model} sem cota hoje, pulando até ela voltar`);
+        lastError = error;
+        continue;
+      }
       console.warn(`Gemini ${model} fora do ar, passando para o próximo modelo`);
       lastError = error;
     }
@@ -288,9 +320,14 @@ export async function generateReply(customerId: number, phone: string) {
     ...config,
     systemInstruction: [
       SYSTEM_PROMPT,
+      PUBLIC_URL
+        ? `Link do cardápio com fotos: ${PUBLIC_URL}/cardapio. Envie esse link quando o cliente quiser ver as opções ou estiver indeciso.`
+        : "",
       `Cardápio atual:\n${menu}`,
       `Carrinho atual do cliente (já salvo no sistema): ${JSON.stringify(summarizeCart(cart))}`,
-    ].join("\n\n"),
+    ]
+      .filter(Boolean)
+      .join("\n\n"),
   };
 
   // Escolhido na primeira chamada e mantido até o fim desta resposta

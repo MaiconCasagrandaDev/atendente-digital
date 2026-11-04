@@ -181,22 +181,26 @@
         .replace(/>/g, "&gt;");
     }
 
-    // Formatação do WhatsApp: *negrito*, _itálico_, ~riscado~
+    // Formatação do WhatsApp: *negrito*, _itálico_, ~riscado~ e links
     function formatar(texto) {
       return escaparHtml(texto)
+        .replace(/https?:\/\/[^\s<]+/g, (url) => {
+          const limpo = url.replace(/[.,;:!?)]+$/, "");
+          return `<a href="${limpo}">${limpo}</a>${url.slice(limpo.length)}`;
+        })
         .replace(/\*(.+?)\*/g, "<strong>$1</strong>")
-        .replace(/_(.+?)_/g, "<em>$1</em>")
+        .replace(/(^|\s)_(.+?)_/g, "$1<em>$2</em>")
         .replace(/~(.+?)~/g, "<s>$1</s>");
     }
 
-    function horaAtual() {
-      return new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+    function formatarHora(data) {
+      return data.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
     }
 
-    function adicionarMensagem(texto, quem) {
+    function adicionarMensagem(texto, quem, data = new Date()) {
       const balao = document.createElement("div");
       balao.className = "msg " + quem;
-      balao.innerHTML = formatar(texto) + '<span class="hora">' + horaAtual() + "</span>";
+      balao.innerHTML = formatar(texto) + '<span class="hora">' + formatarHora(data) + "</span>";
       mensagens.appendChild(balao);
       mensagens.scrollTop = mensagens.scrollHeight;
     }
@@ -259,7 +263,27 @@
       campo.focus();
     });
 
-    adicionarAviso("Simulação do atendimento pelo WhatsApp. As respostas vêm do atendente com IA de verdade.");
+    // Ao abrir: mostra o histórico e, se veio do cardápio, deixa a mensagem pronta
+    async function iniciar() {
+      adicionarAviso("Simulação do atendimento pelo WhatsApp. As respostas vêm do atendente com IA de verdade.");
+
+      try {
+        const resposta = await fetch("/dev/history?phone=" + encodeURIComponent(telefone));
+        const historico = await resposta.json();
+        for (const m of historico) {
+          adicionarMensagem(m.text, m.direction === "INBOUND" ? "minha" : "bot", new Date(m.createdAt));
+        }
+      } catch {}
+
+      const mensagemPronta = new URLSearchParams(location.search).get("mensagem");
+      if (mensagemPronta) {
+        campo.value = mensagemPronta;
+        history.replaceState(null, "", location.pathname);
+      }
+      campo.focus();
+    }
+
+    iniciar();
   </script>
 </body>
 </html>

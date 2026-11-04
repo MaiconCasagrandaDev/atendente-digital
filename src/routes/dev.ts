@@ -2,7 +2,9 @@ import { randomUUID } from "node:crypto";
 import { Router } from "express";
 import { z } from "zod";
 import { validate } from "../lib/validate";
+import { prisma } from "../lib/prisma";
 import { handleIncomingMessage } from "../services/bot";
+import { getRecentMessages } from "../services/messages";
 
 export const devRouter = Router();
 
@@ -24,4 +26,19 @@ devRouter.post("/chat", async (req, res) => {
   });
 
   res.json({ reply });
+});
+
+// GET /dev/history?phone=...: últimas mensagens da conversa, para o simulador
+devRouter.get("/history", async (req, res) => {
+  const phone = String(req.query.phone ?? "");
+  const customer = await prisma.customer.findUnique({ where: { phone } });
+  if (!customer) {
+    res.json([]);
+    return;
+  }
+
+  const messages = await getRecentMessages(customer.id, 50);
+  res.json(
+    messages.map((m) => ({ text: m.text, direction: m.direction, createdAt: m.createdAt })),
+  );
 });
