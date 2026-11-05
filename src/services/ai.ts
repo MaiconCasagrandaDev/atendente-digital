@@ -6,6 +6,7 @@ import {
   type GenerateContentConfig,
   type Part,
 } from "@google/genai";
+import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { AppError } from "../lib/errors";
 import { parseId, validate } from "../lib/validate";
@@ -28,6 +29,17 @@ const MODELS = (process.env.GEMINI_MODEL ?? "gemini-3.8-flash")
 
 // Endereço público sem barra no fim, para o link não sair com "//cardapio"
 const PUBLIC_URL = process.env.PUBLIC_URL?.replace(/\/+$/, "");
+
+// Endereço de entrega em partes: a trava confere o número da casa no campo dele
+export const deliveryAddressSchema = z.object({
+  street: z.string().trim().min(3),
+  number: z.preprocess(
+    (value) => (value === undefined || value === null ? value : String(value)),
+    z.string().trim().regex(/^(\d+[a-z]?|s\/?n|sem n[uú]mero)$/i),
+  ),
+  neighborhood: z.string().trim().min(2),
+  complement: z.string().trim().optional(),
+});
 
 // Modelo reserva que respondeu por último, lembrado por alguns minutos
 let preferredModel: string | undefined;
@@ -130,10 +142,12 @@ Regras:
 - Se o produto tiver opções obrigatórias no cardápio (como o sabor do suco) e o cliente não escolheu, pergunte antes de adicionar. Coloque as escolhas na observação do item (ex.: "laranja" ou "sem cebola").
 - Faça no máximo uma ou duas perguntas por mensagem.
 - Para fechar o pedido, pergunte se é entrega ou retirada, o endereço (se for entrega) e a forma de pagamento: Pix, cartão ou dinheiro. Se for dinheiro, pergunte se precisa de troco e para quanto.
+- Para entrega, pergunte a rua, o número da casa e o bairro, e se há complemento ou ponto de referência. Se faltar alguma parte, pergunte antes de seguir. Copie a rua e o bairro exatamente como o cliente escreveu, inclusive os números (ex.: "Villa Nova 2"). Ao confirmar, mande cada parte no seu próprio campo.
+- No resumo antes de confirmar, mostre o endereço completo, para o cliente conferir.
 - Antes de confirmar, mostre o resumo com os itens e o total e pergunte se está tudo certo. Só chame confirmar_pedido depois que o cliente concordar.
 - Mesmo que o cliente já tenha passado todos os dados, sempre mostre o resumo e espere ele responder antes de chamar confirmar_pedido.
 - Depois de confirmar, responda só com uma frase curta de agradecimento. O comprovante completo do pedido é enviado automaticamente pelo sistema, então não repita os itens nem o total.
-- No resumo antes de confirmar, organize assim: 🛍️ *Seu pedido*, um item por linha (➤ 2x X-Burguer — R$ 55,00), depois a entrega, a forma de pagamento e o *Total* em negrito, e por fim a pergunta se está tudo certo.
+- No resumo antes de confirmar, organize assim: 🛍️ *Seu pedido*, um item por linha com a observação entre parênteses quando houver (➤ 1x X-Bacon (sem cebola) — R$ 32,00), depois 📍 a entrega, 💳 a forma de pagamento e o *Total* em negrito, e por fim a pergunta se está tudo certo.
 - Se o cliente pedir para falar com uma pessoa, ou se você não souber responder, diga que vai chamar um atendente.
 - Horário de funcionamento: todos os dias, das 18h às 23h.
 `.trim();
@@ -178,7 +192,10 @@ const functionDeclarations: FunctionDeclaration[] = [
       type: Type.OBJECT,
       properties: {
         deliveryType: { type: Type.STRING, enum: ["DELIVERY", "PICKUP"], description: "entrega ou retirada" },
-        address: { type: Type.STRING, description: "endereço completo, obrigatório para entrega" },
+        street: { type: Type.STRING, description: "rua ou avenida, obrigatório para entrega" },
+        number: { type: Type.STRING, description: "número da casa, ou 's/n' se não tiver; obrigatório para entrega" },
+        neighborhood: { type: Type.STRING, description: "bairro, obrigatório para entrega" },
+        complement: { type: Type.STRING, description: "complemento ou ponto de referência, se houver" },
         paymentMethod: { type: Type.STRING, enum: ["PIX", "CARD", "CASH"] },
         changeFor: { type: Type.NUMBER, description: "troco para quanto, só se for dinheiro" },
         notes: { type: Type.STRING, description: "observação geral do pedido" },
@@ -261,7 +278,21 @@ async function runTool(name: string, args: Record<string, unknown>, phone: strin
       }
 
       case "confirmar_pedido": {
-        const data = validate(confirmOrderSchema, args);
+        // Para entrega, monta o endereço a partir das partes; sem elas, não confirma
+        let address: string | undefined;
+        if (args.deliveryType === "DELIVERY") {
+          const parts = deliveryAddressSchema.safeParse(args);
+          if (!parts.success) {
+            return {
+              erro: "Ainda não confirme. Para entrega, peça ao cliente a rua, o número da casa (ou se é sem número) e o bairro.",
+            };
+          }
+          const { street, number, neighborhood, complement } = parts.data;
+          address = `${street}, ${number} - ${neighborhood}${complement ? ` (${complement})` : ""}`;
+        }
+
+        const data = validate(confirmOrderSchema, { ...args, address });
+
         const cart = await getOrCreateCart(phone);
 
         // Trava: a última mensagem do bot precisa ter mostrado o total atual do carrinho
