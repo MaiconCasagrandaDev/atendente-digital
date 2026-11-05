@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import { requireAdmin } from "../lib/auth";
 import { prisma } from "../lib/prisma";
 import { createProductSchema, updateProductSchema } from "../schemas/product";
 
@@ -37,7 +38,7 @@ productsRouter.get("/:id", async (req, res) => {
 });
 
 // POST /products: cria um produto
-productsRouter.post("/", async (req, res) => {
+productsRouter.post("/", requireAdmin, async (req, res) => {
   const result = createProductSchema.safeParse(req.body);
   if (!result.success) {
     res.status(400).json({ errors: z.flattenError(result.error) });
@@ -49,7 +50,7 @@ productsRouter.post("/", async (req, res) => {
 });
 
 // PATCH /products/:id: edita só os campos enviados
-productsRouter.patch("/:id", async (req, res) => {
+productsRouter.patch("/:id", requireAdmin, async (req, res) => {
   const id = parseId(req.params.id);
   if (!id) {
     res.status(400).json({ error: "id inválido" });
@@ -73,7 +74,7 @@ productsRouter.patch("/:id", async (req, res) => {
 });
 
 // DELETE /products/:id: desativa em vez de apagar
-productsRouter.delete("/:id", async (req, res) => {
+productsRouter.delete("/:id", requireAdmin, async (req, res) => {
   const id = parseId(req.params.id);
   if (!id) {
     res.status(400).json({ error: "id inválido" });

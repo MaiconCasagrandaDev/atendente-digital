@@ -2,6 +2,7 @@ import express, { type ErrorRequestHandler } from "express";
 import { productsRouter } from "./routes/products";
 import { ordersRouter } from "./routes/orders";
 import { AppError } from "./lib/errors";
+import { requireAdmin } from "./lib/auth";
 import { webhookRouter } from "./routes/webhook";
 import { devRouter } from "./routes/dev";
 
@@ -30,7 +31,7 @@ app.get("/health", (_req, res) => {
 });
 
 app.use("/products", productsRouter);
-app.use("/orders", ordersRouter);
+app.use("/orders", requireAdmin, ordersRouter);
 app.use("/webhook", webhookRouter);
 
 // Rotas de teste e simulador: só existem fora do modo "live"
