@@ -166,21 +166,6 @@
     const enviar = document.getElementById("enviar");
     const status = document.getElementById("status");
 
-    // O campo cresce conforme o texto, até um limite
-    function ajustarAltura() {
-      campo.style.height = "auto";
-      campo.style.height = campo.scrollHeight + "px";
-    }
-    campo.addEventListener("input", ajustarAltura);
-
-    // Enter envia; Shift + Enter pula linha
-    campo.addEventListener("keydown", (evento) => {
-      if (evento.key === "Enter" && !evento.shiftKey) {
-        evento.preventDefault();
-        form.requestSubmit();
-      }
-    });
-
     // Cada visitante ganha um telefone fictício, guardado no navegador
     function novoTelefone() {
       return "559900" + String(Math.floor(Math.random() * 1e7)).padStart(7, "0");
@@ -193,6 +178,9 @@
     } catch {
       telefone = novoTelefone();
     }
+
+    let ultimoId = 0;      // id da última mensagem já mostrada
+    let buscando = false;  // evita duas consultas ao mesmo tempo
 
     function escaparHtml(texto) {
       return texto
@@ -249,6 +237,44 @@
       }
     }
 
+    // O campo cresce conforme o texto, até um limite
+    function ajustarAltura() {
+      campo.style.height = "auto";
+      campo.style.height = campo.scrollHeight + "px";
+    }
+    campo.addEventListener("input", ajustarAltura);
+
+    // Enter envia; Shift + Enter pula linha
+    campo.addEventListener("keydown", (evento) => {
+      if (evento.key === "Enter" && !evento.shiftKey) {
+        evento.preventDefault();
+        form.requestSubmit();
+      }
+    });
+
+    // Busca no servidor as mensagens que chegaram depois da última mostrada
+    async function buscarNovas() {
+      if (buscando) return;
+      buscando = true;
+      try {
+        const resposta = await fetch(
+          "/dev/history?phone=" + encodeURIComponent(telefone) + "&after=" + ultimoId,
+        );
+        const novas = await resposta.json();
+        for (const m of novas) {
+          ultimoId = Math.max(ultimoId, m.id);
+          // As mensagens do cliente já aparecem na hora em que ele envia
+          if (m.direction === "OUTBOUND") {
+            adicionarMensagem(m.text, "bot", new Date(m.createdAt));
+          }
+        }
+      } catch {
+        // Sem conexão: tenta de novo na próxima rodada
+      } finally {
+        buscando = false;
+      }
+    }
+
     form.addEventListener("submit", async (evento) => {
       evento.preventDefault();
       const texto = campo.value.trim();
@@ -265,10 +291,10 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ phone: telefone, name: "Cliente da demonstração", text: texto }),
         });
-        const dados = await resposta.json();
-        if (!resposta.ok) throw new Error(dados.error || "Erro ao enviar");
+        if (!resposta.ok) throw new Error("Erro ao enviar");
         mostrarDigitando(false);
-        for (const texto of dados.replies ?? []) adicionarMensagem(texto, "bot");
+        // As respostas do bot já estão salvas: busca e mostra
+        await buscarNovas();
       } catch {
         mostrarDigitando(false);
         adicionarAviso("Não foi possível enviar a mensagem. Tente de novo.");
@@ -279,6 +305,7 @@
     document.getElementById("nova").addEventListener("click", () => {
       telefone = novoTelefone();
       try { localStorage.setItem("simulador-telefone", telefone); } catch {}
+      ultimoId = 0;
       mensagens.innerHTML = "";
       adicionarAviso("Nova conversa iniciada.");
       campo.focus();
@@ -292,6 +319,7 @@
         const resposta = await fetch("/dev/history?phone=" + encodeURIComponent(telefone));
         const historico = await resposta.json();
         for (const m of historico) {
+          ultimoId = Math.max(ultimoId, m.id);
           adicionarMensagem(m.text, m.direction === "INBOUND" ? "minha" : "bot", new Date(m.createdAt));
         }
       } catch {}
@@ -306,6 +334,12 @@
     }
 
     iniciar();
+
+    // A cada 3 segundos, procura mensagens novas (como os avisos de status).
+    // Não procura enquanto espera uma resposta, nem com a aba escondida.
+    setInterval(() => {
+      if (!enviar.disabled && !document.hidden) buscarNovas();
+    }, 3000);
   </script>
 </body>
 </html>

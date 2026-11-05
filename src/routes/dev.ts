@@ -28,17 +28,27 @@ devRouter.post("/chat", async (req, res) => {
   res.json({ replies });
 });
 
-// GET /dev/history?phone=...: últimas mensagens da conversa, para o simulador
+// GET /dev/history?phone=...&after=...: mensagens da conversa, para o simulador
+// Sem "after", devolve as últimas 50; com "after", só as que vieram depois desse id
 devRouter.get("/history", async (req, res) => {
   const phone = String(req.query.phone ?? "");
+  const after = Number(req.query.after ?? 0);
+
   const customer = await prisma.customer.findUnique({ where: { phone } });
   if (!customer) {
     res.json([]);
     return;
   }
 
-  const messages = await getRecentMessages(customer.id, 50);
+  const messages =
+    after > 0
+      ? await prisma.message.findMany({
+          where: { customerId: customer.id, id: { gt: after } },
+          orderBy: { id: "asc" },
+        })
+      : await getRecentMessages(customer.id, 50);
+
   res.json(
-    messages.map((m) => ({ text: m.text, direction: m.direction, createdAt: m.createdAt })),
+    messages.map((m) => ({ id: m.id, text: m.text, direction: m.direction, createdAt: m.createdAt })),
   );
 });
