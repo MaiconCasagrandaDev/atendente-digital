@@ -33,6 +33,7 @@ enum OrderStatus {
   DRAFT            // carrinho sendo montado na conversa
   CONFIRMED        // cliente confirmou
   PREPARING        // na cozinha
+  READY            // pronto: aguardando o motoboy ou a retirada
   OUT_FOR_DELIVERY // saiu para entrega
   DELIVERED        // entregue
   CANCELED         // cancelado

@@ -12,7 +12,7 @@ const paymentLabels: Record<string, string> = {
   CASH: "Dinheiro",
 };
 
-function money(value: Prisma.Decimal | number) {
+export function money(value: Prisma.Decimal | number) {
   return Number(value).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 

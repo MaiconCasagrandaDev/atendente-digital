@@ -16,6 +16,7 @@ import {
   updateStatusSchema,
 } from "../schemas/order";
 import { parseId, validate } from "../lib/validate";
+import { notifyStatusChange } from "../services/notifications";
 
 export const ordersRouter = Router();
 
@@ -55,9 +56,11 @@ ordersRouter.post("/:id/confirm", async (req, res) => {
   res.json(await confirmOrder(orderId, data));
 });
 
-// PATCH /orders/:id/status: avança o pedido no fluxo
+// PATCH /orders/:id/status: avança o pedido no fluxo e avisa o cliente
 ordersRouter.patch("/:id/status", async (req, res) => {
   const orderId = parseId(req.params.id);
   const { status } = validate(updateStatusSchema, req.body);
-  res.json(await updateStatus(orderId, status));
+  const order = await updateStatus(orderId, status);
+  await notifyStatusChange(order);
+  res.json(order);
 });

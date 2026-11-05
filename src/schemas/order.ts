@@ -4,6 +4,7 @@ export const orderStatuses = [
   "DRAFT",
   "CONFIRMED",
   "PREPARING",
+  "READY",
   "OUT_FOR_DELIVERY",
   "DELIVERED",
   "CANCELED",

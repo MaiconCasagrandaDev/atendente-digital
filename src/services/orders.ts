@@ -137,7 +137,8 @@ export async function confirmOrder(orderId: number, data: ConfirmOrderInput) {
 const nextStatuses: Record<OrderStatusValue, OrderStatusValue[]> = {
   DRAFT: ["CANCELED"],
   CONFIRMED: ["PREPARING", "CANCELED"],
-  PREPARING: ["OUT_FOR_DELIVERY", "DELIVERED", "CANCELED"],
+  PREPARING: ["READY", "CANCELED"],
+  READY: ["OUT_FOR_DELIVERY", "DELIVERED", "CANCELED"],
   OUT_FOR_DELIVERY: ["DELIVERED"],
   DELIVERED: [],
   CANCELED: [],
