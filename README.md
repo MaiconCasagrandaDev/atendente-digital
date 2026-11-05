@@ -4,7 +4,16 @@ Atendente virtual com IA para pedidos pelo WhatsApp. O cliente conversa em lingu
 
 A demonstração usa uma lanchonete fictícia, mas o projeto serve para qualquer negócio que vende pelo WhatsApp.
 
-> **Status:** em desenvolvimento. A API, a IA, o cardápio digital e o simulador estão funcionando. A conexão com o WhatsApp oficial está pronta no código e aguarda a liberação da conta na Meta.
+> **Status:** em desenvolvimento, com demonstração no ar. A API, a IA, o cardápio digital e o simulador funcionam na nuvem (Render + Neon). A conexão com o WhatsApp oficial está pronta no código e aguarda a liberação da conta na Meta.
+
+## Teste agora
+
+- **Cardápio digital:** https://atendente-digital.onrender.com/cardapio
+- **Simulador de WhatsApp:** https://atendente-digital.onrender.com/simulador
+
+Abra o cardápio no celular, escolha os itens e toque em **Pedir**: a conversa com o atendente abre com o pedido pronto.
+
+> O servidor está no plano gratuito do Render e "dorme" depois de 15 minutos sem uso. O primeiro acesso pode levar até 1 minuto.
 
 ## Demonstração
 
@@ -202,7 +211,7 @@ A lógica fica nos **services**, separada das rotas. A IA usa as mesmas funçõe
 - [ ] Número oficial do WhatsApp em produção
 - [ ] Aviso ao dono quando chega pedido e passagem para atendente humano
 - [ ] Painel do dono em React + Vite
-- [ ] Deploy
+- [x] Deploy (Render + Neon)
 - [ ] Escolha do provedor de IA por loja
 
 ## Autor
