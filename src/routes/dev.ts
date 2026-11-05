@@ -18,14 +18,14 @@ const chatSchema = z.object({
 devRouter.post("/chat", async (req, res) => {
   const { phone, name, text } = validate(chatSchema, req.body);
 
-  const reply = await handleIncomingMessage({
+  const replies = await handleIncomingMessage({
     messageId: `dev.${randomUUID()}`,
     phone,
     name,
     text,
   });
 
-  res.json({ reply });
+  res.json({ replies });
 });
 
 // GET /dev/history?phone=...: últimas mensagens da conversa, para o simulador

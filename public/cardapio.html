@@ -233,17 +233,12 @@
       atualizarBarra();
     });
 
-    function juntar(partes) {
-      if (partes.length <= 1) return partes.join("");
-      return partes.slice(0, -1).join(", ") + " e " + partes[partes.length - 1];
-    }
-
     botaoPedir.addEventListener("click", () => {
-      const partes = [...quantidades].map(([id, quantidade]) => {
+      const linhas = [...quantidades].map(([id, quantidade]) => {
         const produto = produtos.find((p) => p.id === id);
-        return `${quantidade} ${produto.name}`;
+        return `➤ ${quantidade}x ${produto.name}`;
       });
-      const mensagem = "Quero " + juntar(partes);
+      const mensagem = ["Olá! Quero fazer este pedido:", ...linhas].join("\n");
       window.location.href = linkPedido + encodeURIComponent(mensagem);
     });
 

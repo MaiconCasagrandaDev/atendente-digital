@@ -126,10 +126,13 @@ Regras:
 - Para montar o pedido, use as ferramentas. Se o cliente não deixar claro qual produto quer, pergunte antes de adicionar.
 - O carrinho atual do cliente aparece no fim destas instruções. Os itens que estão nele já foram adicionados: não adicione de novo.
 - Para adicionar um produto, use o id que aparece no cardápio. Nunca invente ids.
+- Se a descrição do produto tiver opções (como os sabores do suco), pergunte qual o cliente quer antes de adicionar, e coloque a escolha na observação do item (ex.: "laranja").
+- Faça no máximo uma ou duas perguntas por mensagem.
 - Para fechar o pedido, pergunte se é entrega ou retirada, o endereço (se for entrega) e a forma de pagamento: Pix, cartão ou dinheiro. Se for dinheiro, pergunte se precisa de troco e para quanto.
 - Antes de confirmar, mostre o resumo com os itens e o total e pergunte se está tudo certo. Só chame confirmar_pedido depois que o cliente concordar.
 - Mesmo que o cliente já tenha passado todos os dados, sempre mostre o resumo e espere ele responder antes de chamar confirmar_pedido.
-- Depois de confirmar, informe o número do pedido.
+- Depois de confirmar, responda só com uma frase curta de agradecimento. O comprovante completo do pedido é enviado automaticamente pelo sistema, então não repita os itens nem o total.
+- No resumo antes de confirmar, organize assim: 🛍️ *Seu pedido*, um item por linha (➤ 2x X-Burguer — R$ 55,00), depois a entrega, a forma de pagamento e o *Total* em negrito, e por fim a pergunta se está tudo certo.
 - Se o cliente pedir para falar com uma pessoa, ou se você não souber responder, diga que vai chamar um atendente.
 - Horário de funcionamento: todos os dias, das 18h às 23h.
 `.trim();
@@ -218,8 +221,11 @@ function summarizeCart(cart: CartLike) {
   };
 }
 
+// O que aconteceu durante a resposta (ex.: pedido confirmado)
+type ReplyContext = { confirmedOrderId?: number };
+
 // Executa a ferramenta que a IA pediu, usando os services que já existem
-async function runTool(name: string, args: Record<string, unknown>, phone: string) {
+async function runTool(name: string, args: Record<string, unknown>, phone: string, context: ReplyContext) {
   try {
     switch (name) {
       case "ver_cardapio": {
@@ -275,6 +281,7 @@ async function runTool(name: string, args: Record<string, unknown>, phone: strin
         }
 
         const order = await confirmOrder(cart.id, data);
+        context.confirmedOrderId = order.id;
         return { confirmado: true, ...summarizeCart(order) };
       }
 
@@ -291,6 +298,8 @@ async function runTool(name: string, args: Record<string, unknown>, phone: strin
 }
 
 export async function generateReply(customerId: number, phone: string) {
+  const context: ReplyContext = {};
+
   // Histórico da conversa: cliente = "user", bot = "model"
   const history = await getRecentMessages(customerId);
   const contents: Content[] = history.map((message) => ({
@@ -344,7 +353,10 @@ export async function generateReply(customerId: number, phone: string) {
     const calls = response.functionCalls ?? [];
 
     if (calls.length === 0) {
-      return response.text?.trim() || "Desculpe, não entendi. Pode repetir?";
+      return {
+        text: response.text?.trim() || "Desculpe, não entendi. Pode repetir?",
+        confirmedOrderId: context.confirmedOrderId,
+      };
     }
 
     // Devolve a resposta da IA inteira ao histórico (ela carrega dados internos do modelo)
@@ -353,12 +365,15 @@ export async function generateReply(customerId: number, phone: string) {
 
     const parts: Part[] = [];
     for (const call of calls) {
-      const toolResult = await runTool(call.name ?? "", call.args ?? {}, phone);
+      const toolResult = await runTool(call.name ?? "", call.args ?? {}, phone, context);
       console.log(`[IA] ${call.name}`, call.args ?? {}, "->", JSON.stringify(toolResult));
       parts.push({ functionResponse: { id: call.id, name: call.name, response: toolResult } });
     }
     contents.push({ role: "user", parts });
   }
 
-  return "Desculpe, me enrolei aqui. Pode repetir o seu pedido?";
+  return {
+    text: "Desculpe, me enrolei aqui. Pode repetir o seu pedido?",
+    confirmedOrderId: context.confirmedOrderId,
+  };
 }

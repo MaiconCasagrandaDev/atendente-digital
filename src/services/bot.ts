@@ -1,25 +1,42 @@
 import { generateReply } from "./ai";
 import { saveIncomingMessage, saveOutgoingMessage } from "./messages";
+import { getOrder } from "./orders";
+import { formatOrderReceipt } from "./receipt";
 import { sendText, type IncomingMessage } from "./whatsapp";
+
+// Envia uma mensagem ao cliente e salva no histórico
+async function reply(customerId: number, phone: string, text: string) {
+  const waMessageId = await sendText(phone, text);
+  await saveOutgoingMessage(customerId, text, waMessageId);
+}
 
 // Recebe a mensagem do cliente, gera a resposta com a IA e envia
 export async function handleIncomingMessage(message: IncomingMessage) {
   const saved = await saveIncomingMessage(message);
   if (!saved) {
     console.log(`Mensagem ${message.messageId} repetida, ignorada`);
-    return null;
+    return [];
   }
 
-  let reply: string;
+  const replies: string[] = [];
+
   try {
-    reply = await generateReply(saved.customerId, message.phone);
+    const { text, confirmedOrderId } = await generateReply(saved.customerId, message.phone);
+    replies.push(text);
+
+    // Pedido confirmado nesta resposta: o código monta o comprovante
+    if (confirmedOrderId) {
+      const order = await getOrder(confirmedOrderId);
+      replies.push(formatOrderReceipt(order));
+    }
   } catch (error) {
     console.error("Erro na IA", error);
-    reply = "Desculpe, estou com uma instabilidade agora. Pode tentar de novo em instantes?";
+    replies.push("Desculpe, estou com uma instabilidade agora. Pode tentar de novo em instantes?");
   }
 
-  const waMessageId = await sendText(message.phone, reply);
-  await saveOutgoingMessage(saved.customerId, reply, waMessageId);
+  for (const text of replies) {
+    await reply(saved.customerId, message.phone, text);
+  }
 
-  return reply;
+  return replies;
 }

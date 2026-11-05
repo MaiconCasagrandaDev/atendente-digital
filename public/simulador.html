@@ -113,14 +113,19 @@
       gap: 8px;
       padding: 8px;
       background: #f0f2f5;
+      align-items: flex-end;
     }
-    input {
+    textarea {
       flex: 1;
       border: none;
       border-radius: 20px;
       padding: 11px 14px;
       font-size: 16px;
+      font-family: inherit;
+      line-height: 1.35;
       outline: none;
+      resize: none;
+      max-height: 120px;
     }
     form button {
       width: 44px;
@@ -149,7 +154,7 @@
     <div id="mensagens"></div>
 
     <form id="form">
-      <input id="campo" placeholder="Mensagem" autocomplete="off" />
+      <textarea id="campo" rows="1" placeholder="Mensagem"></textarea>
       <button id="enviar" type="submit" aria-label="Enviar">➤</button>
     </form>
   </div>
@@ -160,6 +165,21 @@
     const campo = document.getElementById("campo");
     const enviar = document.getElementById("enviar");
     const status = document.getElementById("status");
+
+    // O campo cresce conforme o texto, até um limite
+    function ajustarAltura() {
+      campo.style.height = "auto";
+      campo.style.height = campo.scrollHeight + "px";
+    }
+    campo.addEventListener("input", ajustarAltura);
+
+    // Enter envia; Shift + Enter pula linha
+    campo.addEventListener("keydown", (evento) => {
+      if (evento.key === "Enter" && !evento.shiftKey) {
+        evento.preventDefault();
+        form.requestSubmit();
+      }
+    });
 
     // Cada visitante ganha um telefone fictício, guardado no navegador
     function novoTelefone() {
@@ -235,6 +255,7 @@
       if (!texto || enviar.disabled) return;
 
       campo.value = "";
+      ajustarAltura();
       adicionarMensagem(texto, "minha");
       mostrarDigitando(true);
 
@@ -247,7 +268,7 @@
         const dados = await resposta.json();
         if (!resposta.ok) throw new Error(dados.error || "Erro ao enviar");
         mostrarDigitando(false);
-        if (dados.reply) adicionarMensagem(dados.reply, "bot");
+        for (const texto of dados.replies ?? []) adicionarMensagem(texto, "bot");
       } catch {
         mostrarDigitando(false);
         adicionarAviso("Não foi possível enviar a mensagem. Tente de novo.");
@@ -278,6 +299,7 @@
       const mensagemPronta = new URLSearchParams(location.search).get("mensagem");
       if (mensagemPronta) {
         campo.value = mensagemPronta;
+        ajustarAltura();
         history.replaceState(null, "", location.pathname);
       }
       campo.focus();
