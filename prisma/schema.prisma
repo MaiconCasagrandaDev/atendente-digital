@@ -18,6 +18,7 @@ model Product {
   name        String
   description String?
   imageUrl    String?
+  options     Json?
   price       Decimal  @db.Decimal(10, 2)
   category    String
   available   Boolean  @default(true)

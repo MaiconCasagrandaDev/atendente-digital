@@ -10,6 +10,7 @@ import { prisma } from "../lib/prisma";
 import { AppError } from "../lib/errors";
 import { parseId, validate } from "../lib/validate";
 import { addItemSchema, confirmOrderSchema } from "../schemas/order";
+import { productOptionsSchema } from "../schemas/product";
 import { addItem, confirmOrder, getOrCreateCart, removeItem } from "./orders";
 import { getRecentMessages } from "./messages";
 
@@ -126,7 +127,7 @@ Regras:
 - Para montar o pedido, use as ferramentas. Se o cliente não deixar claro qual produto quer, pergunte antes de adicionar.
 - O carrinho atual do cliente aparece no fim destas instruções. Os itens que estão nele já foram adicionados: não adicione de novo.
 - Para adicionar um produto, use o id que aparece no cardápio. Nunca invente ids.
-- Se a descrição do produto tiver opções (como os sabores do suco), pergunte qual o cliente quer antes de adicionar, e coloque a escolha na observação do item (ex.: "laranja").
+- Se o produto tiver opções obrigatórias no cardápio (como o sabor do suco) e o cliente não escolheu, pergunte antes de adicionar. Coloque as escolhas na observação do item (ex.: "laranja" ou "sem cebola").
 - Faça no máximo uma ou duas perguntas por mensagem.
 - Para fechar o pedido, pergunte se é entrega ou retirada, o endereço (se for entrega) e a forma de pagamento: Pix, cartão ou dinheiro. Se for dinheiro, pergunte se precisa de troco e para quanto.
 - Antes de confirmar, mostre o resumo com os itens e o total e pergunte se está tudo certo. Só chame confirmar_pedido depois que o cliente concordar.
@@ -319,7 +320,15 @@ export async function generateReply(customerId: number, phone: string) {
     .map((p) => {
       const price = p.price.toFixed(2).replace(".", ",");
       const description = p.description ? ` - ${p.description}` : "";
-      return `- id ${p.id}: ${p.name} (${p.category}) - R$ ${price}${description}`;
+
+      const parsed = productOptionsSchema.safeParse(p.options);
+      const options = parsed.success
+        ? parsed.data
+            .map((group) => `${group.name}${group.required ? " (obrigatório)" : ""}: ${group.choices.join(", ")}`)
+            .join("; ")
+        : "";
+
+      return `- id ${p.id}: ${p.name} (${p.category}) - R$ ${price}${description}${options ? ` | opções: ${options}` : ""}`;
     })
     .join("\n");
 
