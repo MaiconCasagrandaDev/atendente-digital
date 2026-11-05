@@ -113,6 +113,74 @@
       cursor: pointer;
     }
     .aviso { color: var(--suave); text-align: center; padding: 40px 0; }
+
+    /* Janela de opções */
+    .fundo-modal {
+      position: fixed;
+      inset: 0;
+      background: #00000066;
+      display: none;
+      align-items: flex-end;
+      justify-content: center;
+      z-index: 10;
+    }
+    .fundo-modal.aberto { display: flex; }
+    .modal {
+      background: #fff;
+      width: 100%;
+      max-width: 720px;
+      border-radius: 16px 16px 0 0;
+      padding: 16px 16px 0;
+      max-height: 85dvh;
+      overflow-y: auto;
+    }
+    .modal h3 { margin: 0 0 4px; font-size: 18px; }
+    .grupo { margin-top: 16px; }
+    .grupo-titulo {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .tag {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--suave);
+      background: #f1e7dc;
+      padding: 2px 8px;
+      border-radius: 10px;
+    }
+    .opcao {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 11px 0;
+      border-bottom: 1px solid var(--borda);
+      font-size: 15px;
+      cursor: pointer;
+    }
+    .opcao input { width: 20px; height: 20px; accent-color: var(--destaque); }
+    .modal-acoes {
+      position: sticky;
+      bottom: 0;
+      display: flex;
+      gap: 10px;
+      background: #fff;
+      padding: 14px 0 16px;
+      margin-top: 8px;
+    }
+    .modal-acoes button {
+      flex: 1;
+      padding: 14px;
+      border-radius: 12px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .cancelar { background: #fff; border: 1px solid var(--borda); color: var(--texto); }
+    .adicionar { background: var(--destaque); border: none; color: #fff; }
+    .adicionar:disabled { opacity: 0.5; cursor: default; }
   </style>
 </head>
 <body>
@@ -126,16 +194,36 @@
     <button id="pedir" type="button">Pedir</button>
   </div>
 
+  <div class="fundo-modal" id="fundo-modal">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-nome">
+      <h3 id="modal-nome"></h3>
+      <div class="desc" id="modal-desc"></div>
+      <div id="modal-grupos"></div>
+      <div class="modal-acoes">
+        <button type="button" class="cancelar" id="modal-cancelar">Cancelar</button>
+        <button type="button" class="adicionar" id="modal-adicionar">Adicionar</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     const lista = document.getElementById("lista");
     const categoriasEl = document.getElementById("categorias");
     const barra = document.getElementById("barra");
     const botaoPedir = document.getElementById("pedir");
+    const fundoModal = document.getElementById("fundo-modal");
+    const modalNome = document.getElementById("modal-nome");
+    const modalDesc = document.getElementById("modal-desc");
+    const modalGrupos = document.getElementById("modal-grupos");
+    const botaoAdicionar = document.getElementById("modal-adicionar");
 
     const icones = { Lanches: "🍔", "Porções": "🍟", Bebidas: "🥤", Sobremesas: "🍰" };
-    const quantidades = new Map(); // id do produto -> quantidade
+
+    // Carrinho: cada combinação de produto + escolhas é uma linha
+    const carrinho = new Map(); // chave -> { produtoId, observacao, quantidade }
     let produtos = [];
     let linkPedido = "/simulador?mensagem=";
+    let produtoAberto = null;
 
     const dinheiro = (valor) =>
       valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -155,6 +243,10 @@
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, "-");
     }
+
+    const temOpcoes = (produto) => Array.isArray(produto.options) && produto.options.length > 0;
+
+    // ---------- Lista de produtos ----------
 
     function cartao(produto) {
       const icone = icones[produto.category] ?? "🍽️";
@@ -206,13 +298,47 @@
       });
     }
 
+    // ---------- Carrinho ----------
+
+    function quantidadeDoProduto(id) {
+      let total = 0;
+      for (const entrada of carrinho.values()) {
+        if (entrada.produtoId === id) total += entrada.quantidade;
+      }
+      return total;
+    }
+
+    function adicionarAoCarrinho(id, observacao) {
+      const chave = `${id}|${observacao}`;
+      const atual = carrinho.get(chave);
+      if (atual) atual.quantidade = Math.min(50, atual.quantidade + 1);
+      else carrinho.set(chave, { produtoId: id, observacao, quantidade: 1 });
+      atualizarProduto(id);
+    }
+
+    // Tira uma unidade da última combinação adicionada desse produto
+    function removerDoCarrinho(id) {
+      const entradas = [...carrinho.entries()].filter(([, e]) => e.produtoId === id);
+      if (entradas.length === 0) return;
+
+      const [chave, entrada] = entradas[entradas.length - 1];
+      if (entrada.quantidade > 1) entrada.quantidade--;
+      else carrinho.delete(chave);
+      atualizarProduto(id);
+    }
+
+    function atualizarProduto(id) {
+      document.getElementById(`qtd-${id}`).textContent = quantidadeDoProduto(id);
+      atualizarBarra();
+    }
+
     function atualizarBarra() {
       let itens = 0;
       let total = 0;
-      for (const [id, quantidade] of quantidades) {
-        const produto = produtos.find((p) => p.id === id);
-        itens += quantidade;
-        total += quantidade * Number(produto.price);
+      for (const entrada of carrinho.values()) {
+        const produto = produtos.find((p) => p.id === entrada.produtoId);
+        itens += entrada.quantidade;
+        total += entrada.quantidade * Number(produto.price);
       }
       barra.classList.toggle("visivel", itens > 0);
       botaoPedir.textContent = `Pedir ${itens} ${itens === 1 ? "item" : "itens"} · ${dinheiro(total)}`;
@@ -223,24 +349,98 @@
       if (!botao) return;
 
       const id = Number(botao.dataset.id);
-      const atual = quantidades.get(id) ?? 0;
-      const nova = Math.max(0, Math.min(50, atual + Number(botao.dataset.delta)));
+      const produto = produtos.find((p) => p.id === id);
 
-      if (nova === 0) quantidades.delete(id);
-      else quantidades.set(id, nova);
-
-      document.getElementById(`qtd-${id}`).textContent = nova;
-      atualizarBarra();
+      if (botao.dataset.delta === "-1") {
+        removerDoCarrinho(id);
+      } else if (temOpcoes(produto)) {
+        abrirOpcoes(produto);
+      } else {
+        adicionarAoCarrinho(id, "");
+      }
     });
 
     botaoPedir.addEventListener("click", () => {
-      const linhas = [...quantidades].map(([id, quantidade]) => {
-        const produto = produtos.find((p) => p.id === id);
-        return `➤ ${quantidade}x ${produto.name}`;
+      const linhas = [...carrinho.values()].map((entrada) => {
+        const produto = produtos.find((p) => p.id === entrada.produtoId);
+        const observacao = entrada.observacao ? ` (${entrada.observacao})` : "";
+        return `➤ ${entrada.quantidade}x ${produto.name}${observacao}`;
       });
       const mensagem = ["Olá! Quero fazer este pedido:", ...linhas].join("\n");
       window.location.href = linkPedido + encodeURIComponent(mensagem);
     });
+
+    // ---------- Janela de opções ----------
+
+    function abrirOpcoes(produto) {
+      produtoAberto = produto;
+      modalNome.textContent = produto.name;
+      modalDesc.textContent = produto.description ?? "";
+
+      modalGrupos.innerHTML = produto.options
+        .map((grupo, g) => {
+          const tipo = grupo.type === "single" ? "radio" : "checkbox";
+          const etiqueta = grupo.required ? '<span class="tag">Obrigatório</span>' : "";
+          const opcoes = grupo.choices
+            .map(
+              (escolha, c) =>
+                `<label class="opcao"><input type="${tipo}" name="grupo-${g}" value="${c}"> ${escapar(escolha)}</label>`,
+            )
+            .join("");
+          return `<div class="grupo"><div class="grupo-titulo"><span>${escapar(grupo.name)}</span>${etiqueta}</div>${opcoes}</div>`;
+        })
+        .join("");
+
+      validarOpcoes();
+      fundoModal.classList.add("aberto");
+      document.body.style.overflow = "hidden";
+    }
+
+    function fecharOpcoes() {
+      fundoModal.classList.remove("aberto");
+      document.body.style.overflow = "";
+      produtoAberto = null;
+    }
+
+    // Escolhas marcadas em cada grupo
+    function escolhasMarcadas() {
+      return produtoAberto.options.map((grupo, g) =>
+        [...modalGrupos.querySelectorAll(`input[name="grupo-${g}"]:checked`)].map(
+          (input) => grupo.choices[Number(input.value)],
+        ),
+      );
+    }
+
+    function validarOpcoes() {
+      const escolhas = escolhasMarcadas();
+      const faltaObrigatorio = produtoAberto.options.some(
+        (grupo, g) => grupo.required && escolhas[g].length === 0,
+      );
+      botaoAdicionar.disabled = faltaObrigatorio;
+      botaoAdicionar.textContent = `Adicionar · ${dinheiro(Number(produtoAberto.price))}`;
+    }
+
+    modalGrupos.addEventListener("change", validarOpcoes);
+
+    botaoAdicionar.addEventListener("click", () => {
+      const escolhas = escolhasMarcadas();
+      const observacao = produtoAberto.options
+        .flatMap((grupo, g) => escolhas[g].map((escolha) => (grupo.prefix ?? "") + escolha))
+        .join(", ");
+
+      adicionarAoCarrinho(produtoAberto.id, observacao);
+      fecharOpcoes();
+    });
+
+    document.getElementById("modal-cancelar").addEventListener("click", fecharOpcoes);
+    fundoModal.addEventListener("click", (evento) => {
+      if (evento.target === fundoModal) fecharOpcoes();
+    });
+    document.addEventListener("keydown", (evento) => {
+      if (evento.key === "Escape" && produtoAberto) fecharOpcoes();
+    });
+
+    // ---------- Início ----------
 
     async function carregar() {
       try {
