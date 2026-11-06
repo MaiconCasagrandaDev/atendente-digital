@@ -1,0 +1,423 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Painel · Pedidos</title>
+  <style>
+    :root {
+      --fundo: #f4f1ec;
+      --cartao: #ffffff;
+      --texto: #2b2118;
+      --suave: #7a6a5c;
+      --destaque: #d9480f;
+      --borda: #eadfd3;
+      --ok: #2b8a3e;
+      --perigo: #c92a2a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: var(--fundo);
+      color: var(--texto);
+    }
+    header {
+      background: var(--destaque);
+      color: #fff;
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    header h1 { margin: 0; font-size: 18px; flex: 1; }
+    .vivo { font-size: 13px; opacity: 0.9; }
+    header button {
+      background: transparent;
+      border: 1px solid #ffffff80;
+      color: #fff;
+      border-radius: 16px;
+      padding: 6px 10px;
+      cursor: pointer;
+    }
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding: 10px 16px;
+      background: var(--fundo);
+      border-bottom: 1px solid var(--borda);
+    }
+    nav button {
+      flex: none;
+      padding: 8px 12px;
+      border-radius: 16px;
+      border: 1px solid var(--borda);
+      background: #fff;
+      color: var(--texto);
+      font-size: 14px;
+      cursor: pointer;
+    }
+    nav button.ativa { background: var(--texto); color: #fff; border-color: var(--texto); }
+    main { max-width: 760px; margin: 0 auto; padding: 12px 16px 40px; }
+    .pedido {
+      background: var(--cartao);
+      border: 1px solid var(--borda);
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 12px;
+    }
+    .pedido.novo { border-color: var(--destaque); box-shadow: 0 0 0 2px #d9480f33; }
+    .topo { display: flex; justify-content: space-between; align-items: baseline; }
+    .numero { font-size: 22px; font-weight: 700; }
+    .hora { color: var(--suave); font-size: 13px; }
+    .tipo {
+      display: inline-block;
+      margin: 6px 0;
+      padding: 2px 8px;
+      border-radius: 10px;
+      background: #f1e7dc;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .linha { font-size: 14px; margin: 3px 0; overflow-wrap: anywhere; }
+    .itens { margin: 8px 0; padding: 0; list-style: none; }
+    .itens li { padding: 3px 0; font-size: 15px; }
+    .obs { color: var(--destaque); font-size: 13.5px; margin-left: 18px; }
+    .total { font-weight: 700; margin-top: 6px; }
+    .acoes { display: flex; gap: 8px; margin-top: 12px; }
+    .acoes button {
+      padding: 12px;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .avancar { flex: 1; background: var(--ok); color: #fff; border: none; }
+    .cancelar { background: #fff; color: var(--perigo); border: 1px solid var(--perigo); }
+    .acoes button:disabled { opacity: 0.5; cursor: default; }
+    .vazio { text-align: center; color: var(--suave); padding: 40px 0; }
+    .login { max-width: 360px; margin: 60px auto; padding: 0 16px; text-align: center; }
+    .login input {
+      width: 100%;
+      margin: 12px 0;
+      padding: 12px;
+      font-size: 16px;
+      border: 1px solid var(--borda);
+      border-radius: 10px;
+    }
+    .login button {
+      width: 100%;
+      padding: 12px;
+      font-size: 16px;
+      border: none;
+      border-radius: 10px;
+      background: var(--destaque);
+      color: #fff;
+      cursor: pointer;
+    }
+    .erro { color: var(--perigo); font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div id="tela-login" class="login" hidden>
+    <h2>Painel de pedidos</h2>
+    <p>Digite a chave de administrador.</p>
+    <form id="form-login">
+      <input id="campo-chave" type="password" autocomplete="current-password" placeholder="Chave de administrador" required />
+      <button type="submit">Entrar</button>
+    </form>
+    <p id="erro-login" class="erro" hidden>Chave incorreta.</p>
+  </div>
+
+  <div id="tela-painel" hidden>
+    <header>
+      <h1 id="titulo">Pedidos de hoje</h1>
+      <span class="vivo" id="vivo">● ao vivo</span>
+      <button id="sair" type="button">Sair</button>
+    </header>
+    <nav id="abas"></nav>
+    <main id="lista"></main>
+  </div>
+
+  <script>
+    const telaLogin = document.getElementById("tela-login");
+    const telaPainel = document.getElementById("tela-painel");
+    const formLogin = document.getElementById("form-login");
+    const campoChave = document.getElementById("campo-chave");
+    const erroLogin = document.getElementById("erro-login");
+    const abasEl = document.getElementById("abas");
+    const listaEl = document.getElementById("lista");
+    const vivoEl = document.getElementById("vivo");
+
+    const ABAS = [
+      { id: "novos", nome: "Novos", status: ["CONFIRMED"] },
+      { id: "cozinha", nome: "Na cozinha", status: ["PREPARING"] },
+      { id: "prontos", nome: "Prontos", status: ["READY"] },
+      { id: "entrega", nome: "Em entrega", status: ["OUT_FOR_DELIVERY"] },
+      { id: "concluidos", nome: "Concluídos", status: ["DELIVERED", "CANCELED"] },
+    ];
+    const PAGAMENTO = { PIX: "Pix", CARD: "Cartão", CASH: "Dinheiro" };
+    const PODE_CANCELAR = ["CONFIRMED", "PREPARING", "READY"];
+
+    let chave = null;
+    let pedidos = [];
+    let abaAtual = "novos";
+    let conhecidos = null;      // ids já vistos, para saber o que é novo
+    const destacados = new Set();
+    let ocupado = false;
+
+    // ---------- Utilidades ----------
+
+    function lerChave() {
+      try { return localStorage.getItem("painel-chave"); } catch { return null; }
+    }
+    function salvarChave(valor) {
+      try {
+        if (valor) localStorage.setItem("painel-chave", valor);
+        else localStorage.removeItem("painel-chave");
+      } catch {}
+    }
+
+    // Os textos vêm dos clientes: escapar evita que alguém injete HTML no painel
+    function escapar(texto) {
+      return String(texto ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    const dinheiro = (valor) =>
+      Number(valor).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+    const rotulo = (p) =>
+      p.dailyNumber ? "#" + String(p.dailyNumber).padStart(3, "0") : "nº " + p.id;
+    const hora = (data) =>
+      new Date(data).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+
+    // "há 12 min", "há 1 h 05 min"
+    function haQuanto(data) {
+      const minutos = Math.max(0, Math.floor((Date.now() - new Date(data).getTime()) / 60000));
+      if (minutos < 1) return "agora";
+      if (minutos < 60) return `há ${minutos} min`;
+      return `há ${Math.floor(minutos / 60)} h ${String(minutos % 60).padStart(2, "0")} min`;
+    }
+
+    // Hora de chegada (confirmedAt); pedidos antigos, sem o campo, mostram a última atualização.
+    // O "há X min" só aparece enquanto o pedido está em andamento.
+    function horaDoPedido(p) {
+      if (!p.confirmedAt) return hora(p.updatedAt);
+      const emAndamento = !["DELIVERED", "CANCELED"].includes(p.status);
+      return `chegou às ${hora(p.confirmedAt)}${emAndamento ? ` · ${haQuanto(p.confirmedAt)}` : ""}`;
+    }
+
+    function proximo(p) {
+      if (p.status === "CONFIRMED") return { status: "PREPARING", texto: "Começar a preparar" };
+      if (p.status === "PREPARING") return { status: "READY", texto: "Pedido pronto" };
+      if (p.status === "READY") {
+        return p.deliveryType === "DELIVERY"
+          ? { status: "OUT_FOR_DELIVERY", texto: "Saiu para entrega" }
+          : { status: "DELIVERED", texto: "Cliente retirou" };
+      }
+      if (p.status === "OUT_FOR_DELIVERY") return { status: "DELIVERED", texto: "Entregue" };
+      return null;
+    }
+
+    async function api(caminho, opcoes = {}) {
+      const resposta = await fetch(caminho, {
+        ...opcoes,
+        headers: { "Content-Type": "application/json", "x-admin-key": chave },
+      });
+      if (resposta.status === 401) {
+        sair();
+        throw new Error("401");
+      }
+      const dados = await resposta.json().catch(() => null);
+      if (!resposta.ok) throw new Error(dados?.error || "Erro ao falar com o servidor");
+      return dados;
+    }
+
+    // Bipe curto para pedido novo (o navegador só libera som depois de um clique na página)
+    let audio = null;
+    function bipe() {
+      try {
+        audio ??= new AudioContext();
+        const oscilador = audio.createOscillator();
+        const volume = audio.createGain();
+        oscilador.frequency.value = 880;
+        volume.gain.value = 0.15;
+        oscilador.connect(volume).connect(audio.destination);
+        oscilador.start();
+        oscilador.stop(audio.currentTime + 0.25);
+      } catch {}
+    }
+
+    // ---------- Pedidos ----------
+
+    async function carregar() {
+      if (ocupado) return;
+      try {
+        pedidos = await api("/orders?day=today");
+        vivoEl.textContent = "● ao vivo";
+
+        if (conhecidos) {
+          const chegaram = pedidos.filter((p) => p.status === "CONFIRMED" && !conhecidos.has(p.id));
+          if (chegaram.length > 0) {
+            chegaram.forEach((p) => destacados.add(p.id));
+            bipe();
+          }
+        }
+        conhecidos = new Set(pedidos.map((p) => p.id));
+        desenhar();
+      } catch (erro) {
+        if (erro.message !== "401") vivoEl.textContent = "● sem conexão";
+      }
+    }
+
+    function cartao(p) {
+      const itens = p.items
+        .map((i) => {
+          const obs = i.notes ? `<div class="obs">⎿ ${escapar(i.notes)}</div>` : "";
+          return `<li>${i.quantity}x ${escapar(i.product.name)}${obs}</li>`;
+        })
+        .join("");
+
+      const entrega =
+        p.deliveryType === "DELIVERY"
+          ? `<div class="tipo">🛵 Entrega</div><div class="linha">📍 ${escapar(p.address)}</div>`
+          : `<div class="tipo">🏪 Retirada</div>`;
+
+      const troco =
+        p.paymentMethod === "CASH" && p.changeFor
+          ? ` · troco para ${dinheiro(p.changeFor)} (levar ${dinheiro(Number(p.changeFor) - Number(p.total))})`
+          : "";
+
+      const prox = proximo(p);
+      const botoes = [
+        prox ? `<button type="button" class="avancar" data-id="${p.id}" data-status="${prox.status}">${prox.texto}</button>` : "",
+        PODE_CANCELAR.includes(p.status) ? `<button type="button" class="cancelar" data-id="${p.id}" data-status="CANCELED">Cancelar</button>` : "",
+      ].join("");
+
+      return `
+        <div class="pedido ${destacados.has(p.id) ? "novo" : ""}">
+          <div class="topo">
+            <span class="numero">${rotulo(p)}</span>
+            <span class="hora">${horaDoPedido(p)}${p.status === "CANCELED" ? " · cancelado" : ""}</span>
+          </div>
+          <div class="linha">👤 ${escapar(p.customer?.name || "Cliente")} · ${escapar(p.customer?.phone)}</div>
+          ${entrega}
+          <ul class="itens">${itens}</ul>
+          ${p.notes ? `<div class="linha">📝 ${escapar(p.notes)}</div>` : ""}
+          <div class="linha">💳 ${PAGAMENTO[p.paymentMethod] ?? "—"}${troco}</div>
+          <div class="total">Total: ${dinheiro(p.total)}</div>
+          ${botoes ? `<div class="acoes">${botoes}</div>` : ""}
+        </div>`;
+    }
+
+    function desenhar() {
+      const contar = (aba) => pedidos.filter((p) => aba.status.includes(p.status)).length;
+
+      abasEl.innerHTML = ABAS.map(
+        (aba) =>
+          `<button type="button" data-aba="${aba.id}" class="${aba.id === abaAtual ? "ativa" : ""}">${aba.nome} (${contar(aba)})</button>`,
+      ).join("");
+
+      const novos = contar(ABAS[0]);
+      document.title = novos > 0 ? `(${novos}) Painel · Pedidos` : "Painel · Pedidos";
+
+      const aba = ABAS.find((a) => a.id === abaAtual);
+      const lista = pedidos.filter((p) => aba.status.includes(p.status));
+      listaEl.innerHTML = lista.length
+        ? lista.map(cartao).join("")
+        : '<p class="vazio">Nenhum pedido aqui.</p>';
+    }
+
+    abasEl.addEventListener("click", (evento) => {
+      const botao = evento.target.closest("button[data-aba]");
+      if (!botao) return;
+      abaAtual = botao.dataset.aba;
+      desenhar();
+    });
+
+    listaEl.addEventListener("click", async (evento) => {
+      const botao = evento.target.closest("button[data-status]");
+      if (!botao) return;
+
+      const id = Number(botao.dataset.id);
+      const status = botao.dataset.status;
+      if (status === "CANCELED" && !confirm("Cancelar este pedido? O cliente será avisado.")) return;
+
+      ocupado = true;
+      botao.disabled = true;
+      try {
+        await api(`/orders/${id}/status`, { method: "PATCH", body: JSON.stringify({ status }) });
+        destacados.delete(id);
+      } catch (erro) {
+        if (erro.message !== "401") alert("Não foi possível atualizar o pedido: " + erro.message);
+      } finally {
+        ocupado = false;
+        await carregar();
+      }
+    });
+
+    // ---------- Entrar e sair ----------
+
+    function mostrarPainel() {
+      telaLogin.hidden = true;
+      telaPainel.hidden = false;
+      carregar();
+    }
+
+    function sair() {
+      chave = null;
+      salvarChave(null);
+      conhecidos = null;
+      pedidos = [];
+      destacados.clear();
+      document.title = "Painel · Pedidos";
+      telaPainel.hidden = true;
+      telaLogin.hidden = false;
+      campoChave.value = "";
+      campoChave.focus();
+    }
+
+    formLogin.addEventListener("submit", async (evento) => {
+      evento.preventDefault();
+      erroLogin.hidden = true;
+      chave = campoChave.value.trim();
+      try {
+        await api("/orders?day=today");
+        salvarChave(chave);
+        mostrarPainel();
+      } catch (erro) {
+        // 401 = chave errada; qualquer outra falha é do servidor ou da conexão
+        erroLogin.textContent =
+          erro.message === "401"
+            ? "Chave incorreta."
+            : "Não foi possível conectar ao servidor. Tente de novo. Se ele estava parado, pode levar até 1 minuto para acordar.";
+        erroLogin.hidden = false;
+      }
+    });
+
+    document.getElementById("sair").addEventListener("click", sair);
+
+    // Nome da loja no título
+    fetch("/store")
+      .then((r) => r.json())
+      .then((loja) => { document.getElementById("titulo").textContent = `Pedidos de hoje · ${loja.name}`; })
+      .catch(() => {});
+
+    chave = lerChave();
+    if (chave) mostrarPainel();
+    else telaLogin.hidden = false;
+
+    // Atualiza a cada 5 segundos, menos com a aba escondida
+    setInterval(() => {
+      if (chave && !document.hidden) carregar();
+    }, 5000);
+  </script>
+</body>
+</html>

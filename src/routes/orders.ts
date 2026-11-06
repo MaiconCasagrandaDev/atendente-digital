@@ -20,10 +20,10 @@ import { notifyStatusChange } from "../services/notifications";
 
 export const ordersRouter = Router();
 
-// GET /orders?status=CONFIRMED: lista os pedidos
+// GET /orders?status=CONFIRMED&day=today: lista os pedidos
 ordersRouter.get("/", async (req, res) => {
-  const { status } = validate(listOrdersSchema, req.query);
-  res.json(await listOrders(status));
+  const { status, day } = validate(listOrdersSchema, req.query);
+  res.json(await listOrders(status, day === "today"));
 });
 
 // POST /orders/cart: busca ou cria o carrinho do cliente

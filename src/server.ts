@@ -29,6 +29,11 @@ app.get("/cardapio", (_req, res) => {
   res.sendFile("cardapio.html", { root: "public" });
 });
 
+// Painel do dono (os dados exigem a chave de administrador)
+app.get("/painel", (_req, res) => {
+  res.sendFile("painel.html", { root: "public" });
+});
+
 app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
 });

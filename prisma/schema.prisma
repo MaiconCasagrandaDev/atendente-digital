@@ -76,6 +76,7 @@ model Order {
   total         Decimal        @default(0) @db.Decimal(10, 2)
   businessDate  String?        // dia de trabalho da loja, ex.: "2026-11-06"
   dailyNumber   Int?           // número do pedido no dia: 1, 2, 3...
+  confirmedAt   DateTime?      // hora em que o pedido foi confirmado (chegou na cozinha)
   items         OrderItem[]
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt

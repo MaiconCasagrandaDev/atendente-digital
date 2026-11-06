@@ -50,4 +50,5 @@ export const updateStatusSchema = z.object({
 
 export const listOrdersSchema = z.object({
   status: z.enum(orderStatuses, { error: "status inválido" }).optional(),
+  day: z.literal("today", { error: 'day só aceita "today"' }).optional(),
 });

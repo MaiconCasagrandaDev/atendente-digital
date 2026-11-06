@@ -142,6 +142,7 @@ export async function confirmOrder(orderId: number, data: ConfirmOrderInput) {
             notes: data.notes ?? null,
             businessDate: day,
             dailyNumber: (last._max.dailyNumber ?? 0) + 1,
+            confirmedAt: new Date(),
           },
           include: { ...includeItems, customer: true },
         });
@@ -183,11 +184,15 @@ export async function updateStatus(orderId: number, status: OrderStatusValue) {
   });
 }
 
-// Lista os pedidos; sem filtro, esconde os carrinhos (DRAFT)
-export async function listOrders(status?: OrderStatusValue) {
+// Lista os pedidos; sem filtro de status, esconde os carrinhos (DRAFT).
+// Com onlyToday, traz só os do dia de trabalho atual, em ordem de chegada.
+export async function listOrders(status?: OrderStatusValue, onlyToday = false) {
   return prisma.order.findMany({
-    where: status ? { status } : { status: { not: "DRAFT" } },
-    orderBy: { createdAt: "desc" },
+    where: {
+      ...(status ? { status } : { status: { not: "DRAFT" } }),
+      ...(onlyToday ? { businessDate: businessDate() } : {}),
+    },
+    orderBy: onlyToday ? { dailyNumber: "asc" } : { createdAt: "desc" },
     include: { ...includeItems, customer: true },
   });
 }
