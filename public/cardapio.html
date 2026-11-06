@@ -112,6 +112,7 @@
       font-weight: 600;
       cursor: pointer;
     }
+    .barra button:disabled { opacity: 0.6; cursor: default; }
     .aviso { color: var(--suave); text-align: center; padding: 40px 0; }
 
     /* Janela de opções */
@@ -224,6 +225,7 @@
     let produtos = [];
     let linkPedido = "/simulador?mensagem=";
     let produtoAberto = null;
+    let lojaFechada = false;
 
     const dinheiro = (valor) =>
       valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -342,6 +344,11 @@
       }
       barra.classList.toggle("visivel", itens > 0);
       botaoPedir.textContent = `Pedir ${itens} ${itens === 1 ? "item" : "itens"} · ${dinheiro(total)}`;
+
+      if (lojaFechada) {
+        botaoPedir.disabled = true;
+        botaoPedir.textContent = "Loja fechada no momento";
+      }
     }
 
     lista.addEventListener("click", (evento) => {
@@ -455,6 +462,10 @@
 
         document.getElementById("nome-loja").textContent = loja.name;
         document.title = `Cardápio · ${loja.name}`;
+        if (loja.open === false) {
+          lojaFechada = true;
+          document.querySelector("header p").textContent = `Fechado agora · Abrimos ${loja.hours}`;
+        }
         if (loja.whatsappNumber) {
           linkPedido = `https://wa.me/${loja.whatsappNumber}?text=`;
         }

@@ -8,7 +8,7 @@
     "seed": "tsx --env-file=.env src/seed.ts",
     "build": "prisma generate",
     "start": "prisma migrate deploy && tsx src/server.ts",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "vitest run"
   },
   "repository": {
     "type": "git",
@@ -37,7 +37,8 @@
     "@types/express": "^5.0.6",
     "@types/node": "^26.6.5",
     "@types/pg": "^8.23.1",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
   },
   "allowScripts": {
     "esbuild@0.28.2": true,

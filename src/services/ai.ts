@@ -9,6 +9,7 @@ import {
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { AppError } from "../lib/errors";
+import { describeHours, isStoreOpen } from "../lib/hours";
 import { parseId, validate } from "../lib/validate";
 import { addItemSchema, confirmOrderSchema } from "../schemas/order";
 import { productOptionsSchema } from "../schemas/product";
@@ -149,7 +150,7 @@ Regras:
 - Depois de confirmar, responda só com uma frase curta de agradecimento. O comprovante completo do pedido é enviado automaticamente pelo sistema, então não repita os itens nem o total.
 - No resumo antes de confirmar, organize assim: 🛍️ *Seu pedido*, um item por linha com a observação entre parênteses quando houver (➤ 1x X-Bacon (sem cebola) — R$ 32,00), depois 📍 a entrega, 💳 a forma de pagamento e o *Total* em negrito, e por fim a pergunta se está tudo certo.
 - Se o cliente pedir para falar com uma pessoa, ou se você não souber responder, diga que vai chamar um atendente.
-- Horário de funcionamento: todos os dias, das 18h às 23h.
+- Se a loja estiver fechada, avise com simpatia e diga o horário de funcionamento. Pode mostrar o cardápio e tirar dúvidas, mas não confirme pedidos.
 `.trim();
 
 const functionDeclarations: FunctionDeclaration[] = [
@@ -278,6 +279,12 @@ async function runTool(name: string, args: Record<string, unknown>, phone: strin
       }
 
       case "confirmar_pedido": {
+        if (!isStoreOpen()) {
+          return {
+            erro: `A loja está fechada agora. Não confirme. Avise o cliente que o horário é ${describeHours()}.`,
+          };
+        }
+
         // Para entrega, monta o endereço a partir das partes; sem elas, não confirma
         let address: string | undefined;
         if (args.deliveryType === "DELIVERY") {
@@ -369,6 +376,7 @@ export async function generateReply(customerId: number, phone: string) {
     ...config,
     systemInstruction: [
       SYSTEM_PROMPT,
+      `Horário de funcionamento: ${describeHours()}. Agora a loja está ${isStoreOpen() ? "ABERTA" : "FECHADA"}.`,
       PUBLIC_URL
         ? `Link do cardápio com fotos: ${PUBLIC_URL}/cardapio. Envie esse link quando o cliente quiser ver as opções ou estiver indeciso.`
         : "",

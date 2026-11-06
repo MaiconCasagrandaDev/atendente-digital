@@ -3,6 +3,7 @@ import { productsRouter } from "./routes/products";
 import { ordersRouter } from "./routes/orders";
 import { AppError } from "./lib/errors";
 import { requireAdmin } from "./lib/auth";
+import { describeHours, isStoreOpen, validateStoreConfig } from "./lib/hours";
 import { webhookRouter } from "./routes/webhook";
 import { devRouter } from "./routes/dev";
 
@@ -18,6 +19,8 @@ app.get("/store", (_req, res) => {
   res.json({
     name: process.env.STORE_NAME ?? "Minha Loja",
     whatsappNumber: live ? process.env.WHATSAPP_DISPLAY_NUMBER || null : null,
+    open: isStoreOpen(),
+    hours: describeHours(),
   });
 });
 
@@ -59,6 +62,9 @@ const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
 app.use(errorHandler);
 
 const PORT = Number(process.env.PORT) || 3000;
+
+// Confere o horário da loja no .env; se estiver errado, mostra o motivo e não sobe
+validateStoreConfig();
 
 app.listen(PORT, () => {
   console.log(`Servidor rodando em http://localhost:${PORT}`);
