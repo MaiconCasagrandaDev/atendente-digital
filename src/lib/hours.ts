@@ -153,6 +153,32 @@ export function isStoreOpen(date = new Date(), config = getStoreConfig()) {
   return (worksOn(day) && minutes >= hours.start) || (worksOn(yesterday) && minutes < hours.end);
 }
 
+// Dia de trabalho da loja no formato "AAAA-MM-DD", no fuso da loja.
+// Em turnos que passam da meia-noite, a madrugada conta como o dia anterior.
+export function businessDate(date = new Date(), config = getStoreConfig()) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: config.timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+
+  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value);
+  const minutes = get("hour") * 60 + get("minute");
+  let day = new Date(Date.UTC(get("year"), get("month") - 1, get("day")));
+
+  // Turno que passa da meia-noite (ex.: 18:00-01:00): antes do fechamento, ainda é "ontem"
+  const { hours } = config;
+  if (hours && hours.start > hours.end && minutes < hours.end) {
+    day = new Date(day.getTime() - 24 * 60 * 60 * 1000);
+  }
+
+  return day.toISOString().slice(0, 10);
+}
+
 // Texto do horário, para a IA e o cardápio
 export function describeHours(config = getStoreConfig()) {
   const { hours } = config;

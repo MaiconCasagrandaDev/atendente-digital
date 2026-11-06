@@ -1,6 +1,7 @@
 import { Prisma } from "../generated/prisma/client";
 import { prisma } from "../lib/prisma";
 import { AppError } from "../lib/errors";
+import { businessDate } from "../lib/hours";
 import type { ConfirmOrderInput, OrderStatusValue } from "../schemas/order";
 
 // Sempre devolve o pedido com os itens e os produtos
@@ -119,18 +120,38 @@ export async function confirmOrder(orderId: number, data: ConfirmOrderInput) {
     await prisma.customer.update({ where: { id: order.customerId }, data: { address } });
   }
 
-  return prisma.order.update({
-    where: { id: orderId },
-    data: {
-      status: "CONFIRMED",
-      deliveryType: data.deliveryType,
-      address,
-      paymentMethod: data.paymentMethod,
-      changeFor: data.changeFor ?? null,
-      notes: data.notes ?? null,
-    },
-    include: { ...includeItems, customer: true },
-  });
+  // O número do dia é dado na confirmação. Se dois pedidos confirmarem ao mesmo
+  // tempo e pegarem o mesmo número, o banco recusa (P2002) e tentamos de novo.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await prisma.$transaction(async (tx) => {
+        const day = businessDate();
+        const last = await tx.order.aggregate({
+          where: { businessDate: day },
+          _max: { dailyNumber: true },
+        });
+
+        return tx.order.update({
+          where: { id: orderId },
+          data: {
+            status: "CONFIRMED",
+            deliveryType: data.deliveryType,
+            address,
+            paymentMethod: data.paymentMethod,
+            changeFor: data.changeFor ?? null,
+            notes: data.notes ?? null,
+            businessDate: day,
+            dailyNumber: (last._max.dailyNumber ?? 0) + 1,
+          },
+          include: { ...includeItems, customer: true },
+        });
+      });
+    } catch (error) {
+      const isConflict =
+        error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
+      if (!isConflict || attempt >= 3) throw error;
+    }
+  }
 }
 
 // Para onde cada status pode ir
@@ -169,4 +190,9 @@ export async function listOrders(status?: OrderStatusValue) {
     orderBy: { createdAt: "desc" },
     include: { ...includeItems, customer: true },
   });
+}
+
+// "#012" para pedidos com número do dia; pedidos antigos mostram o id
+export function orderLabel(order: { id: number; dailyNumber: number | null }) {
+  return order.dailyNumber ? `#${String(order.dailyNumber).padStart(3, "0")}` : `nº ${order.id}`;
 }

@@ -1,4 +1,5 @@
 import type { Prisma } from "../generated/prisma/client";
+import { orderLabel } from "./orders";
 
 type OrderWithItems = Prisma.OrderGetPayload<{
   include: { items: { include: { product: true } } };
@@ -22,7 +23,7 @@ function section(title: string) {
 
 // Comprovante do pedido no formato do WhatsApp
 export function formatOrderReceipt(order: OrderWithItems) {
-  const lines: string[] = [`✅ *Pedido nº ${order.id} confirmado!*`, ""];
+  const lines: string[] = [`✅ *Pedido ${orderLabel(order)} confirmado!*`, ""];
 
   if (order.deliveryType === "DELIVERY") {
     lines.push(...section("🛵 *ENTREGA*"));

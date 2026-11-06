@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeHours, isStoreOpen, parseStoreConfig, StoreConfigError } from "../src/lib/hours";
+import { businessDate, describeHours, isStoreOpen, parseStoreConfig, StoreConfigError } from "../src/lib/hours";
 
 // Horário de Brasília (UTC-3, sem horário de verão). 06/11/2026 é uma sexta-feira.
 const sp = (dateTime: string) => new Date(`${dateTime}:00-03:00`);
@@ -106,6 +106,28 @@ describe("isStoreOpen", () => {
     const instante = sp("2026-11-06T19:00"); // 19:00 em Brasília = 07:00 do dia seguinte em Tóquio
     expect(isStoreOpen(instante, config("18:00-23:00"))).toBe(true);
     expect(isStoreOpen(instante, config("18:00-23:00", "", "Asia/Tokyo"))).toBe(false);
+  });
+});
+
+describe("businessDate", () => {
+  it("num dia normal, é a data de hoje em Brasília", () => {
+    expect(businessDate(sp("2026-11-06T19:00"), config("18:00-23:00"))).toBe("2026-11-06");
+  });
+
+  it("turno que passa da meia-noite: a madrugada conta como o dia anterior", () => {
+    const c = config("18:00-01:00");
+    expect(businessDate(sp("2026-11-07T00:30"), c)).toBe("2026-11-06");
+    expect(businessDate(sp("2026-11-07T01:00"), c)).toBe("2026-11-07"); // já passou do fechamento
+    expect(businessDate(sp("2026-12-01T00:30"), c)).toBe("2026-11-30"); // volta o mês também
+  });
+
+  it("turno no mesmo dia: depois da meia-noite já é o dia seguinte", () => {
+    expect(businessDate(sp("2026-11-07T00:30"), config("00:00-24:00"))).toBe("2026-11-07");
+  });
+
+  it("usa o fuso da loja, não o do servidor", () => {
+    // 02:00 UTC do dia 7 ainda são 23:00 do dia 6 em São Paulo
+    expect(businessDate(new Date("2026-11-07T02:00:00Z"), config("18:00-23:30"))).toBe("2026-11-06");
   });
 });
 

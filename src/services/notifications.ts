@@ -1,5 +1,6 @@
 import type { Prisma } from "../generated/prisma/client";
 import { saveOutgoingMessage } from "./messages";
+import { orderLabel } from "./orders";
 import { money } from "./receipt";
 import { sendText } from "./whatsapp";
 
@@ -9,7 +10,7 @@ const PUBLIC_URL = process.env.PUBLIC_URL?.replace(/\/+$/, "");
 
 // Mensagem de cada status; null quando não há aviso
 function statusMessage(order: OrderWithCustomer): string | null {
-  const number = `nº ${order.id}`;
+  const number = orderLabel(order);
   const delivery = order.deliveryType === "DELIVERY";
 
   switch (order.status) {

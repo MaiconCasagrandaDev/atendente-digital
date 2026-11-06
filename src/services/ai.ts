@@ -13,7 +13,7 @@ import { describeHours, isStoreOpen } from "../lib/hours";
 import { parseId, validate } from "../lib/validate";
 import { addItemSchema, confirmOrderSchema } from "../schemas/order";
 import { productOptionsSchema } from "../schemas/product";
-import { addItem, confirmOrder, getOrCreateCart, removeItem } from "./orders";
+import { addItem, confirmOrder, getOrCreateCart, orderLabel, removeItem } from "./orders";
 import { getRecentMessages } from "./messages";
 
 // Desiste de uma chamada que passar de 30 segundos
@@ -227,7 +227,6 @@ type CartLike = {
 
 function summarizeCart(cart: CartLike) {
   return {
-    pedido: cart.id,
     status: cart.status,
     itens: cart.items.map((item) => ({
       itemId: item.id,
@@ -321,7 +320,7 @@ async function runTool(name: string, args: Record<string, unknown>, phone: strin
 
         const order = await confirmOrder(cart.id, data);
         context.confirmedOrderId = order.id;
-        return { confirmado: true, ...summarizeCart(order) };
+        return { confirmado: true, numeroDoPedido: orderLabel(order), ...summarizeCart(order) };
       }
 
       default:
