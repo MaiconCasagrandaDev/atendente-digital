@@ -61,6 +61,7 @@ POST /webhook ── salva a mensagem ── IA (Gemini)
 - **Google Gemini** (`@google/genai`) com *function calling*
 - **WhatsApp Cloud API** (Meta)
 - **ngrok** para expor o webhook em desenvolvimento
+- **Vitest** para testes automatizados
 
 ## Estrutura
 
@@ -148,6 +149,7 @@ A lógica fica nos **services**, separada das rotas. A IA usa as mesmas funçõe
 |---|---|
 | `npm run dev` | Sobe a API com recarga automática |
 | `npm run seed` | Recria o cardápio de exemplo (apaga produtos e pedidos) |
+| `npm test` | Roda os testes automatizados (Vitest) |
 | `npx tsx --env-file=.env src/scripts/list-models.ts` | Lista os modelos do Gemini disponíveis para a chave |
 
 ## Endpoints
