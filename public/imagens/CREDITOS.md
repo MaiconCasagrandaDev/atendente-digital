@@ -12,6 +12,7 @@ Todas as fotos vêm do Wikimedia Commons, foram reduzidas e recomprimidas e, qua
 | batata-cheddar-bacon.jpg | Luke | Public domain | https://commons.wikimedia.org/wiki/File:Loaded_fries_food.jpg |
 | aneis-de-cebola.jpg | Jess Sawrey from Los Angeles, California, USA | CC BY 2.0 | https://commons.wikimedia.org/wiki/File:Flickr_pancakejess_677476794--Onion_rings.jpg |
 | refrigerante-cola.jpg | pic_p_ter | Public domain | https://commons.wikimedia.org/wiki/File:Glass_cola.jpg |
+| refrigerante-guarana.jpg | Hisakazu Watanabe | CC BY-SA 2.0 | https://commons.wikimedia.org/wiki/File:Ginger_ale.jpg |
 | suco-natural.jpg | Flunse | CC BY-SA 3.0 | https://commons.wikimedia.org/wiki/File:Orange_juice_without_any_fruits.jpg |
 | agua-mineral.jpg | Shixart1985 | CC BY 2.0 | https://commons.wikimedia.org/wiki/File:Waiter_serves_water_in_a_glass_at_a_restaurant.jpg |
 | pudim.jpg | Marcelo Träsel from Porto Alegre, Brasil | CC BY-SA 2.0 | https://commons.wikimedia.org/wiki/File:Pudim_de_leite_(3544235183).jpg |
