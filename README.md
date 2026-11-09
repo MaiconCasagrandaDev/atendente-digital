@@ -17,6 +17,10 @@ Abra o cardápio no celular, escolha os itens e toque em **Pedir**: a conversa c
 
 ## Demonstração
 
+O cliente pede pelo cardápio e pela conversa, e o pedido chega ao vivo no painel do dono:
+
+https://github.com/user-attachments/assets/c2133686-83db-443c-8f1e-d309f72fb0c3
+
 | Cardápio digital | Conversa com o atendente |
 |---|---|
 | ![Cardápio digital](docs/cardapio.png) | ![Conversa com o atendente](docs/conversa.png) |
