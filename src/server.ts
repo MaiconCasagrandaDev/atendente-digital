@@ -21,6 +21,8 @@ app.get("/store", (_req, res) => {
     whatsappNumber: live ? process.env.WHATSAPP_DISPLAY_NUMBER || null : null,
     open: isStoreOpen(),
     hours: describeHours(),
+    contactWhatsapp: process.env.CONTACT_WHATSAPP?.replace(/\D/g, "") || null,
+    contactName: process.env.CONTACT_NAME || null,
   });
 });
 

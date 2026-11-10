@@ -10,6 +10,24 @@ async function reply(customerId: number, phone: string, text: string) {
   await saveOutgoingMessage(customerId, text, waMessageId);
 }
 
+// Resposta quando a IA falha; na demonstração, a cota esgotada vira um convite de contato
+function fallbackReply(error: unknown) {
+  const status = (error as { status?: number }).status;
+  const message = String((error as { message?: unknown }).message ?? "");
+  const quotaExceeded = status === 429 || message.includes("sem cota");
+
+  const contact = process.env.CONTACT_WHATSAPP?.replace(/\D/g, "");
+  const name = process.env.CONTACT_NAME || "a gente";
+
+  if (quotaExceeded && contact) {
+    return `A demonstração atingiu o limite de testes de hoje. 😅\n\nQuer ver um atendente assim funcionando no seu negócio? Fale com ${name} pelo WhatsApp: https://wa.me/${contact}`;
+  }
+  if (quotaExceeded) {
+    return "Estamos com muitos atendimentos agora. Pode tentar de novo em alguns minutos?";
+  }
+  return "Desculpe, estou com uma instabilidade agora. Pode tentar de novo em instantes?";
+}
+
 // Recebe a mensagem do cliente, gera a resposta com a IA e envia
 export async function handleIncomingMessage(message: IncomingMessage) {
   const saved = await saveIncomingMessage(message);
@@ -31,7 +49,7 @@ export async function handleIncomingMessage(message: IncomingMessage) {
     }
   } catch (error) {
     console.error("Erro na IA", error);
-    replies.push("Desculpe, estou com uma instabilidade agora. Pode tentar de novo em instantes?");
+    replies.push(fallbackReply(error));
   }
 
   for (const text of replies) {

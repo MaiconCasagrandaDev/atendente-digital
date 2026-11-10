@@ -182,6 +182,32 @@
     .cancelar { background: #fff; border: 1px solid var(--borda); color: var(--texto); }
     .adicionar { background: var(--destaque); border: none; color: #fff; }
     .adicionar:disabled { opacity: 0.5; cursor: default; }
+    .contato {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      max-width: 720px;
+      margin: 12px auto 0;
+      padding: 12px 14px;
+      background: #fff3c4;
+      border: 1px solid #f3d27a;
+      border-radius: 12px;
+    }
+    .contato[hidden] { display: none; }
+    .contato-texto { flex: 1 1 220px; font-size: 13.5px; line-height: 1.35; }
+    .contato a {
+      flex: 1 1 auto;
+      text-align: center;
+      background: #25d366;
+      color: #fff;
+      font-weight: 700;
+      font-size: 14px;
+      text-decoration: none;
+      padding: 10px 14px;
+      border-radius: 20px;
+      white-space: nowrap;
+    }
   </style>
 </head>
 <body>
@@ -189,6 +215,15 @@
     <h1 id="nome-loja">Cardápio</h1>
     <p>Escolha os itens e toque em Pedir</p>
   </header>
+  <div style="padding: 0 16px;">
+    <div id="contato" class="contato" hidden>
+      <div class="contato-texto">
+        <strong>Este é um cardápio de demonstração.</strong><br />
+        Funciona para lanchonetes, pizzarias, lojas, salões e outros negócios.
+      </div>
+      <a id="contato-link" target="_blank" rel="noopener">💬 Quero no meu negócio</a>
+    </div>
+  </div>
   <nav id="categorias"></nav>
   <main id="lista"><p class="aviso">Carregando o cardápio...</p></main>
   <div class="barra" id="barra">
@@ -468,6 +503,13 @@
         }
         if (loja.whatsappNumber) {
           linkPedido = `https://wa.me/${loja.whatsappNumber}?text=`;
+        }
+        if (loja.contactWhatsapp) {
+          const saudacao = loja.contactName ? `Olá, ${loja.contactName}!` : "Olá!";
+          const texto = `${saudacao} Vi o cardápio de demonstração do Atendente Digital e quero um assim no meu estabelecimento.`;
+          document.getElementById("contato-link").href =
+            `https://wa.me/${loja.contactWhatsapp}?text=${encodeURIComponent(texto)}`;
+          document.getElementById("contato").hidden = false;
         }
 
         desenhar();

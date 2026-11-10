@@ -138,6 +138,29 @@
       cursor: pointer;
     }
     form button:disabled { opacity: 0.5; cursor: default; }
+    .contato {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+      background: #ffffff;
+      border-bottom: 1px solid #e0e0e0;
+      padding: 10px 12px;
+    }
+    .contato[hidden] { display: none; }
+    .contato span { flex: 1 1 220px; font-size: 13px; color: #54656f; line-height: 1.3; }
+    .contato a {
+      flex: 1 1 auto;
+      text-align: center;
+      background: #25d366;
+      color: #fff;
+      font-weight: 700;
+      font-size: 14px;
+      text-decoration: none;
+      padding: 10px 14px;
+      border-radius: 20px;
+      white-space: nowrap;
+    }
   </style>
 </head>
 <body>
@@ -150,6 +173,10 @@
       </div>
       <button id="nova" type="button">Nova conversa</button>
     </header>
+    <div id="contato" class="contato" hidden>
+      <span>Atendente com IA para o seu negócio: lanchonetes, pizzarias, lojas, salões e mais.</span>
+      <a id="contato-link" target="_blank" rel="noopener">💬 Quero no meu negócio</a>
+    </div>
 
     <div id="mensagens"></div>
 
@@ -332,6 +359,19 @@
       }
       campo.focus();
     }
+
+    // Botão de contato, só na demonstração
+    fetch("/store")
+      .then((r) => r.json())
+      .then((loja) => {
+        if (!loja.contactWhatsapp) return;
+        const saudacao = loja.contactName ? `Olá, ${loja.contactName}!` : "Olá!";
+        const texto = `${saudacao} Testei o Atendente Digital e quero um atendente assim no meu estabelecimento.`;
+        document.getElementById("contato-link").href =
+          `https://wa.me/${loja.contactWhatsapp}?text=${encodeURIComponent(texto)}`;
+        document.getElementById("contato").hidden = false;
+      })
+      .catch(() => {});
 
     iniciar();
 
