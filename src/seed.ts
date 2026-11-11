@@ -1,4 +1,5 @@
 import { prisma } from "./lib/prisma";
+import { normalizeText } from "./lib/text";
 
 // Opções que se repetem entre os produtos
 const retirarIngrediente = [
@@ -40,6 +41,18 @@ async function main() {
   await prisma.order.deleteMany();
   await prisma.product.deleteMany();
   const { count } = await prisma.product.createMany({ data: products });
+
+  const zones = [
+    { name: "Centro", fee: 5 },
+    { name: "São Bento", fee: 6 },
+    { name: "Cidade Alta", fee: 7 },
+    { name: "Vila Nova", fee: 8 },
+  ];
+  await prisma.deliveryZone.deleteMany();
+  await prisma.deliveryZone.createMany({
+    data: zones.map((z) => ({ ...z, key: normalizeText(z.name) })),
+  });
+
   console.log(`${count} produtos criados`);
 }
 

@@ -7,12 +7,15 @@ export type StoreConfig = {
   timeZone: string;
   // null = sem horário configurado (sempre aberta)
   hours: { start: number; end: number; closedDays: number[] } | null;
+  // null = sem taxa padrão (só entrega nos bairros cadastrados)
+  deliveryDefaultFee: number | null;
 };
 
 type StoreEnv = {
   STORE_TIMEZONE?: string;
   STORE_HOURS?: string;
   STORE_CLOSED_DAYS?: string;
+  DELIVERY_DEFAULT_FEE?: string;
 };
 
 export class StoreConfigError extends Error {
@@ -96,8 +99,23 @@ export function parseStoreConfig(env: StoreEnv): StoreConfig {
     }
   }
 
+  // Taxa padrão de entrega: número >= 0, com vírgula ou ponto ("8,00" ou "8.00")
+  const feeText = (env.DELIVERY_DEFAULT_FEE ?? "").trim();
+  let deliveryDefaultFee: number | null = null;
+
+  if (feeText) {
+    if (/^\d+([.,]\d+)?$/.test(feeText)) {
+      deliveryDefaultFee = Number(feeText.replace(",", "."));
+    } else {
+      problems.push(
+        `DELIVERY_DEFAULT_FEE="${env.DELIVERY_DEFAULT_FEE}" não é um valor válido. ` +
+          `Use um número maior ou igual a zero, com vírgula ou ponto. Exemplo: DELIVERY_DEFAULT_FEE="8.00" (ou vazio para só entregar nos bairros cadastrados)`,
+      );
+    }
+  }
+
   if (problems.length) throw new StoreConfigError(problems);
-  return { timeZone, hours };
+  return { timeZone, hours, deliveryDefaultFee };
 }
 
 let cachedConfig: StoreConfig | null = null;

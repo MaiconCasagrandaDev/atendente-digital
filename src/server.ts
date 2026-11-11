@@ -6,6 +6,7 @@ import { requireAdmin } from "./lib/auth";
 import { describeHours, isStoreOpen, validateStoreConfig } from "./lib/hours";
 import { webhookRouter } from "./routes/webhook";
 import { devRouter } from "./routes/dev";
+import { deliveryRouter } from "./routes/delivery";
 
 const app = express();
 app.use(express.json());
@@ -42,6 +43,7 @@ app.get("/health", (_req, res) => {
 
 app.use("/products", productsRouter);
 app.use("/orders", requireAdmin, ordersRouter);
+app.use("/delivery-zones", requireAdmin, deliveryRouter);
 app.use("/webhook", webhookRouter);
 
 // Rotas de teste e simulador: só existem fora do modo "live"

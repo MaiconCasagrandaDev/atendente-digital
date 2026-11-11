@@ -116,3 +116,15 @@ model Message {
   @@index([customerId, createdAt])
   @@map("messages")
 }
+
+model DeliveryZone {
+  id        Int      @id @default(autoincrement())
+  name      String            // como aparece para o cliente: "São Bento"
+  key       String   @unique  // nome sem acento e minúsculo: "sao bento"
+  fee       Decimal  @db.Decimal(10, 2)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("delivery_zones")
+}

@@ -14,7 +14,7 @@ const expectInvalid = (env: Parameters<typeof parseStoreConfig>[0], message: Reg
 
 describe("parseStoreConfig", () => {
   it("sem horário configurado, a loja fica sempre aberta", () => {
-    expect(parseStoreConfig({})).toEqual({ timeZone: "America/Sao_Paulo", hours: null });
+    expect(parseStoreConfig({})).toEqual({ timeZone: "America/Sao_Paulo", hours: null, deliveryDefaultFee: null });
     expect(parseStoreConfig({ STORE_HOURS: "  ", STORE_TIMEZONE: "" }).hours).toBeNull();
   });
 
@@ -55,6 +55,17 @@ describe("parseStoreConfig", () => {
 
   it.each(["seg", "7", "-1", "1.5", "1;2"])("recusa a folga %j", (closedDays) => {
     expectInvalid({ STORE_HOURS: "18:00-23:00", STORE_CLOSED_DAYS: closedDays }, /STORE_CLOSED_DAYS/);
+  });
+
+  it("lê a taxa padrão de entrega com vírgula ou ponto", () => {
+    expect(parseStoreConfig({ DELIVERY_DEFAULT_FEE: "8.00" }).deliveryDefaultFee).toBe(8);
+    expect(parseStoreConfig({ DELIVERY_DEFAULT_FEE: " 7,50 " }).deliveryDefaultFee).toBe(7.5);
+    expect(parseStoreConfig({ DELIVERY_DEFAULT_FEE: "0" }).deliveryDefaultFee).toBe(0);
+    expect(parseStoreConfig({ DELIVERY_DEFAULT_FEE: "" }).deliveryDefaultFee).toBeNull();
+  });
+
+  it.each(["-1", "abc", "R$ 8", "8,00,00", "8.", "1.000,00"])("recusa a taxa padrão %j", (fee) => {
+    expectInvalid({ DELIVERY_DEFAULT_FEE: fee }, /DELIVERY_DEFAULT_FEE/);
   });
 
   it("junta todos os problemas numa mensagem só", () => {

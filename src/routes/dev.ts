@@ -6,6 +6,7 @@ import { validate } from "../lib/validate";
 import { prisma } from "../lib/prisma";
 import { handleIncomingMessage } from "../services/bot";
 import { getRecentMessages } from "../services/messages";
+import { quoteDelivery } from "../services/delivery";
 
 export const devRouter = Router();
 
@@ -62,4 +63,10 @@ devRouter.get("/cep/:cep", async (req, res) => {
   } catch {
     res.status(502).json({ error: "ViaCEP indisponível" });
   }
+});
+
+// GET /dev/delivery/:cep?bairro=...: endereço e taxa de entrega (só para testes)
+devRouter.get("/delivery/:cep", async (req, res) => {
+  const bairro = typeof req.query.bairro === "string" ? req.query.bairro : undefined;
+  res.json(await quoteDelivery(req.params.cep, bairro));
 });
