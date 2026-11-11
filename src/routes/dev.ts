@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Router } from "express";
 import { z } from "zod";
+import { lookupCep } from "../lib/cep";
 import { validate } from "../lib/validate";
 import { prisma } from "../lib/prisma";
 import { handleIncomingMessage } from "../services/bot";
@@ -51,4 +52,14 @@ devRouter.get("/history", async (req, res) => {
   res.json(
     messages.map((m) => ({ id: m.id, text: m.text, direction: m.direction, createdAt: m.createdAt })),
   );
+});
+
+// GET /dev/cep/95700000: consulta um CEP no ViaCEP (só para testes)
+devRouter.get("/cep/:cep", async (req, res) => {
+  try {
+    const address = await lookupCep(req.params.cep);
+    res.json(address ?? { error: "CEP inválido ou não encontrado" });
+  } catch {
+    res.status(502).json({ error: "ViaCEP indisponível" });
+  }
 });
