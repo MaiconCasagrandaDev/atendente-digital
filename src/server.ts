@@ -7,8 +7,13 @@ import { describeHours, isStoreOpen, validateStoreConfig } from "./lib/hours";
 import { webhookRouter } from "./routes/webhook";
 import { devRouter } from "./routes/dev";
 import { deliveryRouter } from "./routes/delivery";
+import { rateLimit } from "./lib/rate-limit";
+import { deliveryProblem, quoteDelivery } from "./services/delivery";
 
 const app = express();
+
+// O Render fica na frente do servidor: isso faz o req.ip ser o IP real do cliente
+app.set("trust proxy", 1);
 app.use(express.json());
 
 // Fotos do cardápio, em public/imagens
@@ -24,6 +29,35 @@ app.get("/store", (_req, res) => {
     hours: describeHours(),
     contactWhatsapp: process.env.CONTACT_WHATSAPP?.replace(/\D/g, "") || null,
     contactName: process.env.CONTACT_NAME || null,
+  });
+});
+
+// GET /delivery/quote?cep=...&bairro=...: endereço e taxa para o cardápio
+app.get("/delivery/quote", rateLimit({ windowMs: 60_000, max: 20 }), async (req, res) => {
+  const cep = String(req.query.cep ?? "");
+  const bairro = typeof req.query.bairro === "string" ? req.query.bairro : undefined;
+
+  const quote = await quoteDelivery(cep, bairro);
+  if (!quote.ok) {
+    const problem = deliveryProblem(quote);
+    res.status(problem.status).json({
+      ok: false,
+      reason: quote.reason,
+      error: problem.message,
+      city: quote.address?.city ?? null,
+      state: quote.address?.state ?? null,
+    });
+    return;
+  }
+
+  res.json({
+    ok: true,
+    cep: quote.address.cep,
+    street: quote.address.street,
+    neighborhood: quote.neighborhood,
+    city: quote.address.city,
+    state: quote.address.state,
+    fee: quote.fee.toFixed(2),
   });
 });
 
