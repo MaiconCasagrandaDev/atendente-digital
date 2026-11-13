@@ -6,12 +6,15 @@ import {
   getOrder,
   listOrders,
   removeItem,
+  setDelivery,
+  setPickup,
   updateStatus,
 } from "../services/orders";
 import {
   addItemSchema,
   cartSchema,
   confirmOrderSchema,
+  deliverySchema,
   listOrdersSchema,
   updateStatusSchema,
 } from "../schemas/order";
@@ -47,6 +50,18 @@ ordersRouter.post("/:id/items", async (req, res) => {
 // DELETE /orders/:id/items/:itemId: remove um item do carrinho
 ordersRouter.delete("/:id/items/:itemId", async (req, res) => {
   res.json(await removeItem(parseId(req.params.id), parseId(req.params.itemId)));
+});
+
+// PUT /orders/:id/delivery: entrega pelo CEP (calcula a taxa)
+ordersRouter.put("/:id/delivery", async (req, res) => {
+  const orderId = parseId(req.params.id);
+  const data = validate(deliverySchema, req.body);
+  res.json(await setDelivery(orderId, data));
+});
+
+// PUT /orders/:id/pickup: retirada no balcão
+ordersRouter.put("/:id/pickup", async (req, res) => {
+  res.json(await setPickup(parseId(req.params.id)));
 });
 
 // POST /orders/:id/confirm: fecha o carrinho

@@ -2,7 +2,9 @@ import { Prisma } from "../generated/prisma/client";
 import { prisma } from "../lib/prisma";
 import { AppError } from "../lib/errors";
 import { businessDate } from "../lib/hours";
-import type { ConfirmOrderInput, OrderStatusValue } from "../schemas/order";
+import type { ConfirmOrderInput, DeliveryInput, OrderStatusValue } from "../schemas/order";
+import { deliveryProblem, formatAddress, quoteDelivery } from "./delivery";
+import { money } from "./receipt";
 
 // Sempre devolve o pedido com os itens e os produtos
 const includeItems = {
@@ -48,16 +50,26 @@ async function getDraft(orderId: number) {
   return order;
 }
 
-// Soma quantidade x preço de cada item e salva no pedido
-async function recalcTotal(orderId: number) {
-  const items = await prisma.orderItem.findMany({ where: { orderId } });
-  const total = items.reduce(
+// Total do pedido: itens + taxa de entrega
+export function orderTotal(
+  items: { unitPrice: Prisma.Decimal; quantity: number }[],
+  deliveryFee: Prisma.Decimal | number = 0,
+) {
+  return items.reduce(
     (sum, item) => sum.plus(item.unitPrice.mul(item.quantity)),
-    new Prisma.Decimal(0),
+    new Prisma.Decimal(deliveryFee),
   );
+}
+
+// Recalcula e salva o total do pedido
+async function recalcTotal(orderId: number) {
+  const order = await prisma.order.findUniqueOrThrow({
+    where: { id: orderId },
+    include: { items: true },
+  });
   return prisma.order.update({
     where: { id: orderId },
-    data: { total },
+    data: { total: orderTotal(order.items, order.deliveryFee) },
     include: includeItems,
   });
 }
@@ -99,25 +111,68 @@ export async function removeItem(orderId: number, itemId: number) {
   return recalcTotal(orderId);
 }
 
+// Entrega: o endereço vem do CEP, e a taxa do bairro entra no total
+export async function setDelivery(orderId: number, input: DeliveryInput) {
+  await getDraft(orderId);
+
+  const quote = await quoteDelivery(input.cep, input.neighborhood);
+  if (!quote.ok) {
+    const problem = deliveryProblem(quote);
+    throw new AppError(problem.status, problem.message);
+  }
+
+  const street = quote.address.street || input.street;
+  if (!street) throw new AppError(400, "Este CEP é da cidade toda. Informe também a rua.");
+
+  const address = formatAddress({
+    street,
+    number: input.number,
+    neighborhood: quote.neighborhood,
+    city: quote.address.city,
+    state: quote.address.state,
+    complement: input.complement,
+    reference: input.reference,
+  });
+
+  await prisma.order.update({
+    where: { id: orderId },
+    data: { deliveryType: "DELIVERY", cep: quote.address.cep, address, deliveryFee: quote.fee },
+  });
+  return recalcTotal(orderId);
+}
+
+// Retirada: sem endereço e sem taxa
+export async function setPickup(orderId: number) {
+  await getDraft(orderId);
+  await prisma.order.update({
+    where: { id: orderId },
+    data: { deliveryType: "PICKUP", cep: null, address: null, deliveryFee: 0 },
+  });
+  return recalcTotal(orderId);
+}
+
 export async function confirmOrder(orderId: number, data: ConfirmOrderInput) {
   const order = await getDraft(orderId);
 
   const itemCount = await prisma.orderItem.count({ where: { orderId } });
   if (itemCount === 0) throw new AppError(409, "O carrinho está vazio");
 
+  // Trava: entrega só com endereço que veio do CEP
+  if (order.deliveryType === "DELIVERY" && !order.cep) {
+    throw new AppError(409, "Informe o endereço de entrega (pelo CEP) ou escolha retirada antes de confirmar");
+  }
+
   if (data.changeFor !== undefined && order.total.greaterThan(data.changeFor)) {
     throw new AppError(
       400,
-      `O troco precisa ser para um valor maior ou igual ao total (R$ ${order.total.toFixed(2)})`,
+      `O troco precisa ser para um valor maior ou igual ao total (${money(order.total)})`,
     );
   }
 
-  const address = data.deliveryType === "DELIVERY" ? data.address : null;
-
   // Guarda o endereço no cliente ANTES de confirmar,
   // para a resposta já trazer o cliente atualizado
-  if (address) {
-    await prisma.customer.update({ where: { id: order.customerId }, data: { address } });
+  if (order.deliveryType === "DELIVERY" && order.address) {
+    await prisma.customer.update({ where: { id: order.customerId }, data: { address: order.address } });
   }
 
   // O número do dia é dado na confirmação. Se dois pedidos confirmarem ao mesmo
@@ -135,8 +190,6 @@ export async function confirmOrder(orderId: number, data: ConfirmOrderInput) {
           where: { id: orderId },
           data: {
             status: "CONFIRMED",
-            deliveryType: data.deliveryType,
-            address,
             paymentMethod: data.paymentMethod,
             changeFor: data.changeFor ?? null,
             notes: data.notes ?? null,

@@ -70,6 +70,8 @@ model Order {
   status        OrderStatus    @default(DRAFT)
   deliveryType  DeliveryType   @default(DELIVERY)
   address       String?
+  cep           String?        // CEP de onde veio o endereço; vazio = retirada ou ainda não informado
+  deliveryFee   Decimal        @default(0) @db.Decimal(10, 2)
   paymentMethod PaymentMethod?
   changeFor     Decimal?       @db.Decimal(10, 2) // troco para quanto
   notes         String?

@@ -50,6 +50,10 @@ export function formatOrderReceipt(order: OrderWithItems) {
     lines.push(`Troco para ${money(order.changeFor)} (levar ${money(change)} de troco)`);
   }
   lines.push("");
+  if (Number(order.deliveryFee) > 0) {
+    lines.push(`Subtotal: ${money(order.total.minus(order.deliveryFee))}`);
+    lines.push(`Taxa de entrega: ${money(order.deliveryFee)}`);
+  }
   lines.push(`*TOTAL: ${money(order.total)}*`);
   lines.push(LINE);
   lines.push("Vamos te avisando por aqui a cada etapa do pedido! 😊");

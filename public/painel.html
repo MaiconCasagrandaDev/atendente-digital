@@ -312,6 +312,7 @@
           <ul class="itens">${itens}</ul>
           ${p.notes ? `<div class="linha">📝 ${escapar(p.notes)}</div>` : ""}
           <div class="linha">💳 ${PAGAMENTO[p.paymentMethod] ?? "—"}${troco}</div>
+          ${Number(p.deliveryFee) > 0 ? `<div class="linha">🛵 Taxa de entrega: ${dinheiro(p.deliveryFee)}</div>` : ""}
           <div class="total">Total: ${dinheiro(p.total)}</div>
           ${botoes ? `<div class="acoes">${botoes}</div>` : ""}
         </div>`;

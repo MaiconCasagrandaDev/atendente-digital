@@ -6,14 +6,21 @@ import {
   type GenerateContentConfig,
   type Part,
 } from "@google/genai";
-import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { AppError } from "../lib/errors";
 import { describeHours, isStoreOpen } from "../lib/hours";
 import { parseId, validate } from "../lib/validate";
-import { addItemSchema, confirmOrderSchema } from "../schemas/order";
+import { addItemSchema, confirmOrderSchema, deliverySchema } from "../schemas/order";
 import { productOptionsSchema } from "../schemas/product";
-import { addItem, confirmOrder, getOrCreateCart, orderLabel, removeItem } from "./orders";
+import {
+  addItem,
+  confirmOrder,
+  getOrCreateCart,
+  orderLabel,
+  removeItem,
+  setDelivery,
+  setPickup,
+} from "./orders";
 import { getRecentMessages } from "./messages";
 
 // Desiste de uma chamada que passar de 30 segundos
@@ -30,17 +37,6 @@ const MODELS = (process.env.GEMINI_MODEL ?? "gemini-3.8-flash")
 
 // Endereço público sem barra no fim, para o link não sair com "//cardapio"
 const PUBLIC_URL = process.env.PUBLIC_URL?.replace(/\/+$/, "");
-
-// Endereço de entrega em partes: a trava confere o número da casa no campo dele
-export const deliveryAddressSchema = z.object({
-  street: z.string().trim().min(3),
-  number: z.preprocess(
-    (value) => (value === undefined || value === null ? value : String(value)),
-    z.string().trim().regex(/^(\d+[a-z]?|s\/?n|sem n[uú]mero)$/i),
-  ),
-  neighborhood: z.string().trim().min(2),
-  complement: z.string().trim().optional(),
-});
 
 // Modelo reserva que respondeu por último, lembrado por alguns minutos
 let preferredModel: string | undefined;
@@ -141,14 +137,21 @@ Regras:
 - O carrinho atual do cliente aparece no fim destas instruções. Os itens que estão nele já foram adicionados: não adicione de novo.
 - Para adicionar um produto, use o id que aparece no cardápio. Nunca invente ids.
 - Se o produto tiver opções obrigatórias no cardápio (como o sabor do suco) e o cliente não escolheu, pergunte antes de adicionar. Coloque as escolhas na observação do item (ex.: "laranja" ou "sem cebola").
+- Só preencha a observação de um item quando o cliente pedir alguma mudança (ex.: "sem cebola"). Nunca use "sem alteração", "normal" ou parecidos.
 - Faça no máximo uma ou duas perguntas por mensagem.
-- Para fechar o pedido, pergunte se é entrega ou retirada, o endereço (se for entrega) e a forma de pagamento: Pix, cartão ou dinheiro. Se for dinheiro, pergunte se precisa de troco e para quanto.
-- Para entrega, pergunte a rua, o número da casa e o bairro, e se há complemento ou ponto de referência. Se faltar alguma parte, pergunte antes de seguir. Copie a rua e o bairro exatamente como o cliente escreveu, inclusive os números (ex.: "Villa Nova 2"). Ao confirmar, mande cada parte no seu próprio campo.
-- No resumo antes de confirmar, mostre o endereço completo, para o cliente conferir.
+- Para fechar o pedido, pergunte se é entrega ou retirada.
+- Para entrega, peça o CEP e o número da casa (e, se o cliente quiser, complemento e ponto de referência) e chame definir_entrega. O sistema busca a rua, o bairro e a cidade pelo CEP: confirme com o cliente o endereço que voltar. Nunca invente nem complete um endereço por conta própria.
+- Quando definir_entrega der certo, repita o endereço completo para o cliente conferir antes de seguir.
+- Se definir_entrega pedir rua e bairro (CEP geral da cidade), pergunte ao cliente e chame de novo com a rua e o bairro, copiando como ele escreveu, inclusive números (ex.: "Villa Nova 2").
+- Se o cliente não souber o CEP, explique que ele é necessário para calcular a entrega, ou ofereça a retirada.
+- Se definir_entrega devolver erro (CEP inválido, fora da área, bairro não atendido), explique com as palavras do erro e ofereça a retirada.
+- Para retirada, chame definir_retirada.
+- Depois, pergunte a forma de pagamento: Pix, cartão ou dinheiro. Se for dinheiro, pergunte se precisa de troco e para quanto (o troco precisa cobrir o total com a entrega).
+- Sobre troco: ele precisa ser maior ou igual ao total. Nunca sugira valores de troco que o cliente não falou.
+- No resumo antes de confirmar, organize assim: 🛍️ *Seu pedido*, um item por linha com a observação entre parênteses (➤ 1x X-Bacon (sem cebola) — R$ 32,00); depois Subtotal, Taxa de entrega (se houver), 📍 o endereço completo ou "Retirada no balcão", 💳 a forma de pagamento e o *Total* em negrito; por fim, pergunte se está tudo certo.
 - Antes de confirmar, mostre o resumo com os itens e o total e pergunte se está tudo certo. Só chame confirmar_pedido depois que o cliente concordar.
 - Mesmo que o cliente já tenha passado todos os dados, sempre mostre o resumo e espere ele responder antes de chamar confirmar_pedido.
 - Depois de confirmar, responda só com uma frase curta de agradecimento. O comprovante completo do pedido é enviado automaticamente pelo sistema, então não repita os itens nem o total.
-- No resumo antes de confirmar, organize assim: 🛍️ *Seu pedido*, um item por linha com a observação entre parênteses quando houver (➤ 1x X-Bacon (sem cebola) — R$ 32,00), depois 📍 a entrega, 💳 a forma de pagamento e o *Total* em negrito, e por fim a pergunta se está tudo certo.
 - Se o cliente pedir para falar com uma pessoa, ou se você não souber responder, diga que vai chamar um atendente.
 - Se a loja estiver fechada, avise com simpatia e diga o horário de funcionamento. Pode mostrar o cardápio e tirar dúvidas, mas não confirme pedidos.
 `.trim();
@@ -187,21 +190,36 @@ const functionDeclarations: FunctionDeclaration[] = [
     },
   },
   {
-    name: "confirmar_pedido",
-    description: "Fecha o pedido. Só use depois que o cliente concordar com o resumo.",
+    name: "definir_entrega",
+    description: "Define entrega pelo CEP. O sistema busca o endereço, calcula a taxa do bairro e soma no total.",
     parameters: {
       type: Type.OBJECT,
       properties: {
-        deliveryType: { type: Type.STRING, enum: ["DELIVERY", "PICKUP"], description: "entrega ou retirada" },
-        street: { type: Type.STRING, description: "rua ou avenida, obrigatório para entrega" },
-        number: { type: Type.STRING, description: "número da casa, ou 's/n' se não tiver; obrigatório para entrega" },
-        neighborhood: { type: Type.STRING, description: "bairro, obrigatório para entrega" },
-        complement: { type: Type.STRING, description: "complemento ou ponto de referência, se houver" },
+        cep: { type: Type.STRING, description: "CEP com 8 números, com ou sem traço" },
+        numero: { type: Type.STRING, description: "número da casa, ou 's/n' se não tiver" },
+        complemento: { type: Type.STRING, description: "apartamento, bloco, casa dos fundos..." },
+        referencia: { type: Type.STRING, description: "ponto de referência, se o cliente informar" },
+        rua: { type: Type.STRING, description: "só quando o sistema pedir (CEP geral da cidade)" },
+        bairro: { type: Type.STRING, description: "só quando o sistema pedir (CEP geral da cidade)" },
+      },
+      required: ["cep", "numero"],
+    },
+  },
+  {
+    name: "definir_retirada",
+    description: "Define que o cliente vai retirar no balcão. Sem endereço e sem taxa de entrega.",
+  },
+  {
+    name: "confirmar_pedido",
+    description: "Fecha o pedido. Só use depois de definir entrega ou retirada, mostrar o resumo e o cliente concordar.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
         paymentMethod: { type: Type.STRING, enum: ["PIX", "CARD", "CASH"] },
         changeFor: { type: Type.NUMBER, description: "troco para quanto, só se for dinheiro" },
         notes: { type: Type.STRING, description: "observação geral do pedido" },
       },
-      required: ["deliveryType", "paymentMethod"],
+      required: ["paymentMethod"],
     },
   },
 ];
@@ -216,6 +234,9 @@ type CartLike = {
   id: number;
   status: string;
   total: { toFixed(digits: number): string };
+  deliveryType: string;
+  address: string | null;
+  deliveryFee: { toFixed(digits: number): string; toNumber(): number };
   items: {
     id: number;
     quantity: number;
@@ -235,6 +256,10 @@ function summarizeCart(cart: CartLike) {
       precoUnitario: item.unitPrice.toFixed(2),
       observacao: item.notes,
     })),
+    tipoEntrega: cart.deliveryType === "PICKUP" ? "retirada" : cart.address ? "entrega" : "não definido",
+    endereco: cart.address,
+    subtotal: (Number(cart.total.toFixed(2)) - cart.deliveryFee.toNumber()).toFixed(2),
+    taxaEntrega: cart.deliveryFee.toFixed(2),
     total: cart.total.toFixed(2),
   };
 }
@@ -277,6 +302,24 @@ async function runTool(name: string, args: Record<string, unknown>, phone: strin
         return summarizeCart(await removeItem(cart.id, itemId));
       }
 
+      case "definir_entrega": {
+        const data = validate(deliverySchema, {
+          cep: args.cep,
+          number: args.numero,
+          complement: args.complemento,
+          reference: args.referencia,
+          street: args.rua,
+          neighborhood: args.bairro,
+        });
+        const cart = await getOrCreateCart(phone);
+        return summarizeCart(await setDelivery(cart.id, data));
+      }
+
+      case "definir_retirada": {
+        const cart = await getOrCreateCart(phone);
+        return summarizeCart(await setPickup(cart.id));
+      }
+
       case "confirmar_pedido": {
         if (!isStoreOpen()) {
           return {
@@ -284,20 +327,7 @@ async function runTool(name: string, args: Record<string, unknown>, phone: strin
           };
         }
 
-        // Para entrega, monta o endereço a partir das partes; sem elas, não confirma
-        let address: string | undefined;
-        if (args.deliveryType === "DELIVERY") {
-          const parts = deliveryAddressSchema.safeParse(args);
-          if (!parts.success) {
-            return {
-              erro: "Ainda não confirme. Para entrega, peça ao cliente a rua, o número da casa (ou se é sem número) e o bairro.",
-            };
-          }
-          const { street, number, neighborhood, complement } = parts.data;
-          address = `${street}, ${number} - ${neighborhood}${complement ? ` (${complement})` : ""}`;
-        }
-
-        const data = validate(confirmOrderSchema, { ...args, address });
+        const data = validate(confirmOrderSchema, args);
 
         const cart = await getOrCreateCart(phone);
 

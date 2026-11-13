@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Prisma } from "../src/generated/prisma/client";
-import { feeFor, sameCity } from "../src/services/delivery";
+import { feeFor, quoteDelivery, sameCity } from "../src/services/delivery";
 
 const d = (value: number) => new Prisma.Decimal(value);
 const zones = [
@@ -40,5 +40,11 @@ describe("sameCity", () => {
 
   it("com cidade vazia, aceita qualquer uma", () => {
     expect(sameCity(address, "", "")).toBe(true);
+  });
+});
+
+describe("quoteDelivery", () => {
+  it("recusa CEP mal digitado sem consultar o ViaCEP", async () => {
+    expect(await quoteDelivery("blablabla")).toEqual({ ok: false, reason: "malformed_cep" });
   });
 });

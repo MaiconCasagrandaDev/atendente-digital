@@ -22,20 +22,21 @@ export const cartSchema = z.object({
 export const addItemSchema = z.object({
   productId: z.number({ error: "productId é obrigatório" }).int().positive(),
   quantity: z.number().int().positive().max(50, "Máximo de 50 unidades por item").default(1),
-  notes: z.string().trim().max(200).optional(),
+  notes: z
+    .string()
+    .trim()
+    .max(200)
+    .optional()
+    .transform((value) =>
+      value && /^(sem (altera[cç][aã]o|observa[cç][aã]o|obs)|normal|nenhuma?|-)$/i.test(value) ? undefined : value,
+    ),
 });
 
 export const confirmOrderSchema = z
   .object({
-    deliveryType: z.enum(["DELIVERY", "PICKUP"], { error: "deliveryType deve ser DELIVERY ou PICKUP" }),
-    address: z.string().trim().min(5, "Endereço muito curto").optional(),
     paymentMethod: z.enum(["PIX", "CARD", "CASH"], { error: "paymentMethod deve ser PIX, CARD ou CASH" }),
     changeFor: z.number().positive().optional(),
     notes: z.string().trim().max(300).optional(),
-  })
-  .refine((data) => data.deliveryType === "PICKUP" || data.address, {
-    error: "Endereço é obrigatório para entrega",
-    path: ["address"],
   })
   .refine((data) => data.changeFor === undefined || data.paymentMethod === "CASH", {
     error: "Troco só vale para pagamento em dinheiro",
@@ -43,6 +44,23 @@ export const confirmOrderSchema = z
   });
 
 export type ConfirmOrderInput = z.output<typeof confirmOrderSchema>;
+
+// Número da casa: "506", "506A", "s/n", "sn" ou "sem número" (também aceita número em vez de texto)
+export const houseNumberSchema = z.preprocess(
+  (value) => (value === undefined || value === null ? value : String(value)),
+  z.string().trim().regex(/^(\d+[a-z]?|s\/?n|sem n[uú]mero)$/i, "Número da casa inválido"),
+);
+
+export const deliverySchema = z.object({
+  cep: z.string({ error: "cep é obrigatório" }).trim().min(8, "CEP inválido"),
+  number: houseNumberSchema,
+  street: z.string().trim().min(3).optional(),        // só quando o CEP é geral da cidade
+  neighborhood: z.string().trim().min(2).optional(),  // só quando o CEP é geral da cidade
+  complement: z.string().trim().max(100).optional(),
+  reference: z.string().trim().max(150).optional(),
+});
+
+export type DeliveryInput = z.output<typeof deliverySchema>;
 
 export const updateStatusSchema = z.object({
   status: z.enum(orderStatuses, { error: "status inválido" }),
