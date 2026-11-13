@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Cardápio</title>
   <style>
+    [hidden] { display: none !important; }
     :root {
       --fundo: #faf6f1;
       --cartao: #ffffff;
@@ -194,7 +195,6 @@
       border: 1px solid #f3d27a;
       border-radius: 12px;
     }
-    .contato[hidden] { display: none; }
     .contato-texto { flex: 1 1 220px; font-size: 13.5px; line-height: 1.35; }
     .contato a {
       flex: 1 1 auto;
@@ -208,6 +208,88 @@
       border-radius: 20px;
       white-space: nowrap;
     }
+
+    /* Tela de finalizar pedido */
+    .checkout {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      background: var(--fundo);
+      display: flex;
+      flex-direction: column;
+    }
+    .checkout-topo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 16px;
+      background: var(--destaque);
+      color: #fff;
+    }
+    .checkout-topo h2 { margin: 0; font-size: 18px; }
+    .checkout-topo button {
+      background: transparent;
+      border: 1px solid #ffffff80;
+      color: #fff;
+      border-radius: 16px;
+      padding: 6px 10px;
+      cursor: pointer;
+    }
+    .checkout-corpo { flex: 1; overflow-y: auto; padding: 12px 16px 24px; }
+    .checkout-corpo > * { max-width: 688px; margin-left: auto; margin-right: auto; }
+    .bloco {
+      background: #fff;
+      border: 1px solid var(--borda);
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 12px;
+    }
+    .bloco h3 { margin: 0 0 10px; font-size: 16px; }
+    .linha-item { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
+    .linha-item .info { flex: 1; min-width: 0; }
+    .linha-item .obs { color: var(--destaque); font-size: 13px; }
+    .opcoes { display: flex; gap: 8px; flex-wrap: wrap; }
+    .opcoes button {
+      flex: 1 1 0;
+      padding: 12px;
+      border-radius: 10px;
+      border: 1px solid var(--borda);
+      background: #fff;
+      font-size: 15px;
+      cursor: pointer;
+    }
+    .opcoes button.ativo { border-color: var(--destaque); background: #fff1e8; font-weight: 600; }
+    .bloco label { display: block; font-size: 14px; margin-top: 10px; }
+    .bloco input {
+      display: block;
+      width: 100%;
+      margin-top: 4px;
+      padding: 11px 12px;
+      font-size: 16px;
+      border: 1px solid var(--borda);
+      border-radius: 10px;
+    }
+    .status { font-size: 13.5px; margin: 6px 0 0; min-height: 1em; }
+    .status.erro { color: #c92a2a; }
+    .status.ok { color: #2b8a3e; }
+    .totais div { display: flex; justify-content: space-between; padding: 3px 0; }
+    .totais .total { font-weight: 700; font-size: 17px; border-top: 1px solid var(--borda); margin-top: 6px; padding-top: 8px; }
+    .checkout-rodape { padding: 12px 16px; background: #fff; border-top: 1px solid var(--borda); }
+    .checkout-rodape button {
+      width: 100%;
+      max-width: 688px;
+      display: block;
+      margin: 0 auto;
+      padding: 14px;
+      border: none;
+      border-radius: 12px;
+      background: var(--destaque);
+      color: #fff;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .checkout-rodape button:disabled { opacity: 0.5; cursor: default; }
   </style>
 </head>
 <body>
@@ -239,6 +321,67 @@
         <button type="button" class="cancelar" id="modal-cancelar">Cancelar</button>
         <button type="button" class="adicionar" id="modal-adicionar">Adicionar</button>
       </div>
+    </div>
+  </div>
+
+  <div id="checkout" class="checkout" hidden>
+    <div class="checkout-topo">
+      <button id="voltar" type="button">← Voltar</button>
+      <h2>Finalizar pedido</h2>
+    </div>
+
+    <div class="checkout-corpo">
+      <section class="bloco">
+        <h3>Seu pedido</h3>
+        <div id="resumo-itens"></div>
+      </section>
+
+      <section class="bloco">
+        <h3>Como você quer receber?</h3>
+        <div class="opcoes" id="opcoes-entrega">
+          <button type="button" data-entrega="DELIVERY">🛵 Entrega</button>
+          <button type="button" data-entrega="PICKUP">🏪 Retirada</button>
+        </div>
+
+        <div id="campos-entrega" hidden>
+          <label>CEP
+            <input id="cep" inputmode="numeric" maxlength="9" placeholder="00000-000" autocomplete="postal-code" />
+          </label>
+          <p id="cep-status" class="status"></p>
+
+          <div id="campos-cep-geral" hidden>
+            <label>Rua <input id="rua" autocomplete="address-line1" /></label>
+            <label>Bairro <input id="bairro" /></label>
+          </div>
+
+          <label>Número <input id="numero" placeholder="ex.: 506 ou s/n" /></label>
+          <label>Complemento (opcional) <input id="complemento" placeholder="apto, bloco, casa dos fundos" /></label>
+          <label>Ponto de referência (opcional) <input id="referencia" placeholder="ex.: portão azul" /></label>
+        </div>
+      </section>
+
+      <section class="bloco">
+        <h3>Pagamento</h3>
+        <div class="opcoes" id="opcoes-pagamento">
+          <button type="button" data-pagamento="PIX">Pix</button>
+          <button type="button" data-pagamento="CARD">Cartão</button>
+          <button type="button" data-pagamento="CASH">Dinheiro</button>
+        </div>
+        <label id="campo-troco" hidden>Troco para quanto? (opcional)
+          <input id="troco" inputmode="decimal" placeholder="ex.: 100" />
+        </label>
+        <p id="troco-status" class="status"></p>
+      </section>
+
+      <section class="bloco totais">
+        <div><span>Subtotal</span><span id="t-subtotal"></span></div>
+        <div id="linha-taxa" hidden><span>Taxa de entrega</span><span id="t-taxa"></span></div>
+        <div class="total"><span>Total</span><span id="t-total"></span></div>
+      </section>
+    </div>
+
+    <div class="checkout-rodape">
+      <button id="enviar" type="button" disabled>Enviar pedido</button>
     </div>
   </div>
 
@@ -403,13 +546,7 @@
     });
 
     botaoPedir.addEventListener("click", () => {
-      const linhas = [...carrinho.values()].map((entrada) => {
-        const produto = produtos.find((p) => p.id === entrada.produtoId);
-        const observacao = entrada.observacao ? ` (${entrada.observacao})` : "";
-        return `➤ ${entrada.quantidade}x ${produto.name}${observacao}`;
-      });
-      const mensagem = ["Olá! Quero fazer este pedido:", ...linhas].join("\n");
-      window.location.href = linkPedido + encodeURIComponent(mensagem);
+      if (!lojaFechada) abrirCheckout();
     });
 
     // ---------- Janela de opções ----------
@@ -480,6 +617,259 @@
     });
     document.addEventListener("keydown", (evento) => {
       if (evento.key === "Escape" && produtoAberto) fecharOpcoes();
+    });
+
+    // ---------- Finalizar pedido ----------
+
+    const $ = (id) => document.getElementById(id);
+    const NOMES_PAGAMENTO = { PIX: "Pix", CARD: "Cartão", CASH: "Dinheiro" };
+    const NUMERO_VALIDO = /^(\d+[a-z]?|s\/?n|sem n[uú]mero)$/i;
+
+    let entrega = null;     // "DELIVERY" | "PICKUP"
+    let pagamento = null;   // "PIX" | "CARD" | "CASH"
+    let cotacao = null;     // resposta de /delivery/quote quando deu certo
+    let cepGeral = false;   // CEP da cidade toda: o cliente informa rua e bairro
+    let esperaCep = null;
+
+    function lerSalvo() {
+      try { return JSON.parse(localStorage.getItem("cardapio-endereco") || "{}"); } catch { return {}; }
+    }
+    function salvar(dados) {
+      try { localStorage.setItem("cardapio-endereco", JSON.stringify(dados)); } catch {}
+    }
+
+    function subtotal() {
+      let soma = 0;
+      for (const e of carrinho.values()) {
+        const produto = produtos.find((p) => p.id === e.produtoId);
+        soma += e.quantidade * Number(produto.price);
+      }
+      return soma;
+    }
+    const taxa = () => (entrega === "DELIVERY" && cotacao ? Number(cotacao.fee) : 0);
+    const total = () => subtotal() + taxa();
+
+    function abrirCheckout() {
+      const salvo = lerSalvo();
+      if (salvo.cep && !$("cep").value) {
+        $("cep").value = salvo.cep;
+        $("numero").value = salvo.numero || "";
+        $("complemento").value = salvo.complemento || "";
+        $("referencia").value = salvo.referencia || "";
+        $("rua").value = salvo.rua || "";
+        $("bairro").value = salvo.bairro || "";
+      }
+      desenharItens();
+      atualizarCheckout();
+      $("checkout").hidden = false;
+      document.body.style.overflow = "hidden";
+    }
+
+    function fecharCheckout() {
+      $("checkout").hidden = true;
+      document.body.style.overflow = "";
+    }
+
+    function desenharItens() {
+      if (carrinho.size === 0) {
+        fecharCheckout();
+        return;
+      }
+      $("resumo-itens").innerHTML = [...carrinho.entries()]
+        .map(([chave, e]) => {
+          const produto = produtos.find((p) => p.id === e.produtoId);
+          const obs = e.observacao ? `<div class="obs">⎿ ${escapar(e.observacao)}</div>` : "";
+          return `
+            <div class="linha-item">
+              <div class="info">
+                <div>${escapar(produto.name)}</div>${obs}
+                <div class="desc">${dinheiro(e.quantidade * Number(produto.price))}</div>
+              </div>
+              <div class="qtd">
+                <button type="button" data-chave="${escapar(chave)}" data-delta="-1" aria-label="Menos">−</button>
+                <span>${e.quantidade}</span>
+                <button type="button" data-chave="${escapar(chave)}" data-delta="1" aria-label="Mais">+</button>
+              </div>
+            </div>`;
+        })
+        .join("");
+    }
+
+    $("resumo-itens").addEventListener("click", (evento) => {
+      const botao = evento.target.closest("button[data-chave]");
+      if (!botao) return;
+      const entradaCarrinho = carrinho.get(botao.dataset.chave);
+      if (!entradaCarrinho) return;
+
+      entradaCarrinho.quantidade += Number(botao.dataset.delta);
+      if (entradaCarrinho.quantidade <= 0) carrinho.delete(botao.dataset.chave);
+      else entradaCarrinho.quantidade = Math.min(50, entradaCarrinho.quantidade);
+
+      atualizarProduto(entradaCarrinho.produtoId);
+      desenharItens();
+      atualizarCheckout();
+    });
+
+    $("opcoes-entrega").addEventListener("click", (evento) => {
+      const botao = evento.target.closest("button[data-entrega]");
+      if (!botao) return;
+      entrega = botao.dataset.entrega;
+      if (entrega === "DELIVERY" && !cotacao && $("cep").value) consultarCep();
+      atualizarCheckout();
+    });
+
+    $("opcoes-pagamento").addEventListener("click", (evento) => {
+      const botao = evento.target.closest("button[data-pagamento]");
+      if (!botao) return;
+      pagamento = botao.dataset.pagamento;
+      atualizarCheckout();
+    });
+
+    // CEP: formata enquanto digita e consulta quando tiver 8 números
+    $("cep").addEventListener("input", () => {
+      const digitos = $("cep").value.replace(/\D/g, "").slice(0, 8);
+      $("cep").value = digitos.length > 5 ? `${digitos.slice(0, 5)}-${digitos.slice(5)}` : digitos;
+      cotacao = null;
+      cepGeral = false;
+      $("campos-cep-geral").hidden = true;
+      clearTimeout(esperaCep);
+      if (digitos.length === 8) esperaCep = setTimeout(consultarCep, 300);
+      else mostrarStatusCep("");
+      atualizarCheckout();
+    });
+
+    // No CEP geral, o bairro digitado define a taxa
+    let esperaBairro = null;
+    $("bairro").addEventListener("input", () => {
+      cotacao = null; // a taxa antiga deixa de valer assim que o bairro muda
+      clearTimeout(esperaBairro);
+      if ($("bairro").value.trim().length >= 2) esperaBairro = setTimeout(consultarCep, 300);
+      atualizarCheckout();
+    });
+
+    function mostrarStatusCep(texto, tipo = "") {
+      $("cep-status").textContent = texto;
+      $("cep-status").className = "status " + tipo;
+    }
+
+    let numeroConsulta = 0;
+
+    async function consultarCep() {
+      const digitos = $("cep").value.replace(/\D/g, "");
+      if (digitos.length !== 8) return;
+      const minhaConsulta = ++numeroConsulta;
+
+      const bairro = cepGeral ? $("bairro").value.trim() : "";
+      mostrarStatusCep("Buscando endereço...");
+      try {
+        const resposta = await fetch(
+          `/delivery/quote?cep=${digitos}${bairro ? "&bairro=" + encodeURIComponent(bairro) : ""}`,
+        );
+        const dados = await resposta.json();
+        if (minhaConsulta !== numeroConsulta) return; // chegou uma consulta mais nova
+
+        if (dados.ok) {
+          cotacao = dados;
+          if (!dados.street) cepGeral = true; // CEP geral: a rua vem do cliente
+          $("campos-cep-geral").hidden = !cepGeral;
+          const rua = dados.street ? `${dados.street}, ` : "";
+          mostrarStatusCep(
+            `📍 ${rua}${dados.neighborhood} — ${dados.city}/${dados.state} · Taxa ${dinheiro(Number(dados.fee))}`,
+            "ok",
+          );
+        } else if (dados.reason === "needs_neighborhood") {
+          cotacao = null;
+          cepGeral = true;
+          $("campos-cep-geral").hidden = false;
+          // Bairro já preenchido (endereço salvo): consulta a taxa direto
+          if ($("bairro").value.trim()) return consultarCep();
+          mostrarStatusCep(`CEP da cidade toda (${dados.city}/${dados.state}). Informe a rua e o bairro.`);
+        } else {
+          cotacao = null;
+          mostrarStatusCep(dados.error || "Não foi possível consultar o CEP.", "erro");
+        }
+      } catch {
+        if (minhaConsulta !== numeroConsulta) return;
+        cotacao = null;
+        mostrarStatusCep("Não foi possível consultar o CEP agora. Tente de novo.", "erro");
+      }
+      atualizarCheckout();
+    }
+
+    for (const id of ["numero", "rua", "bairro", "troco", "complemento", "referencia"]) {
+      $(id).addEventListener("input", atualizarCheckout);
+    }
+
+    function valorTroco() {
+      const texto = $("troco").value.trim().replace(",", ".");
+      return texto ? Number(texto) : null;
+    }
+
+    function atualizarCheckout() {
+      document.querySelectorAll("#opcoes-entrega button").forEach((b) =>
+        b.classList.toggle("ativo", b.dataset.entrega === entrega),
+      );
+      document.querySelectorAll("#opcoes-pagamento button").forEach((b) =>
+        b.classList.toggle("ativo", b.dataset.pagamento === pagamento),
+      );
+      $("campos-entrega").hidden = entrega !== "DELIVERY";
+      $("campo-troco").hidden = pagamento !== "CASH";
+
+      $("t-subtotal").textContent = dinheiro(subtotal());
+      $("linha-taxa").hidden = taxa() === 0;
+      $("t-taxa").textContent = dinheiro(taxa());
+      $("t-total").textContent = dinheiro(total());
+
+      // Troco precisa cobrir o total com a entrega
+      const troco = pagamento === "CASH" ? valorTroco() : null;
+      const trocoInvalido = troco !== null && (!Number.isFinite(troco) || troco < total());
+      $("troco-status").textContent = trocoInvalido ? `O troco precisa ser de pelo menos ${dinheiro(total())}.` : "";
+      $("troco-status").className = "status erro";
+
+      const enderecoOk =
+        entrega === "PICKUP" ||
+        (entrega === "DELIVERY" &&
+          cotacao &&
+          NUMERO_VALIDO.test($("numero").value.trim()) &&
+          (!cepGeral || ($("rua").value.trim().length >= 3 && $("bairro").value.trim().length >= 2)));
+
+      const pronto = carrinho.size > 0 && enderecoOk && pagamento && !trocoInvalido;
+      $("enviar").disabled = !pronto;
+      $("enviar").textContent = pronto ? `Enviar pedido · ${dinheiro(total())}` : "Enviar pedido";
+    }
+
+    $("voltar").addEventListener("click", fecharCheckout);
+
+    $("enviar").addEventListener("click", () => {
+      const linhas = [...carrinho.values()].map((e) => {
+        const produto = produtos.find((p) => p.id === e.produtoId);
+        return `➤ ${e.quantidade}x ${produto.name}${e.observacao ? ` (${e.observacao})` : ""}`;
+      });
+
+      const partes = ["Olá! Quero fazer este pedido:", ...linhas, ""];
+
+      if (entrega === "PICKUP") {
+        partes.push("🏪 Vou retirar no balcão");
+      } else {
+        partes.push("🛵 Entrega", `CEP: ${$("cep").value}`);
+        if (cepGeral) partes.push(`Rua: ${$("rua").value.trim()}`, `Bairro: ${$("bairro").value.trim()}`);
+        partes.push(`Número: ${$("numero").value.trim()}`);
+        if ($("complemento").value.trim()) partes.push(`Complemento: ${$("complemento").value.trim()}`);
+        if ($("referencia").value.trim()) partes.push(`Referência: ${$("referencia").value.trim()}`);
+        salvar({
+          cep: $("cep").value,
+          numero: $("numero").value.trim(),
+          complemento: $("complemento").value.trim(),
+          referencia: $("referencia").value.trim(),
+          rua: cepGeral ? $("rua").value.trim() : "",
+          bairro: cepGeral ? $("bairro").value.trim() : "",
+        });
+      }
+
+      const troco = pagamento === "CASH" ? valorTroco() : null;
+      partes.push("", `💳 Pagamento: ${NOMES_PAGAMENTO[pagamento]}${troco ? `, troco para ${dinheiro(troco)}` : ""}`);
+
+      window.location.href = linkPedido + encodeURIComponent(partes.join("\n"));
     });
 
     // ---------- Início ----------
