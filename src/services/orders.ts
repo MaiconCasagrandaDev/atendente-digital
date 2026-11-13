@@ -141,6 +141,31 @@ export async function setDelivery(orderId: number, input: DeliveryInput) {
   return recalcTotal(orderId);
 }
 
+// Salva o pagamento no carrinho; o resumo é montado a partir daqui
+export async function setPayment(orderId: number, data: ConfirmOrderInput) {
+  const order = await getDraft(orderId);
+
+  const itemCount = await prisma.orderItem.count({ where: { orderId } });
+  if (itemCount === 0) throw new AppError(409, "O carrinho está vazio");
+
+  if (order.deliveryType === "DELIVERY" && !order.cep) {
+    throw new AppError(409, "Defina a entrega (CEP e número) ou a retirada antes do resumo");
+  }
+  if (data.changeFor !== undefined && order.total.greaterThan(data.changeFor)) {
+    throw new AppError(400, `O troco precisa ser de pelo menos ${money(order.total)}`);
+  }
+
+  return prisma.order.update({
+    where: { id: orderId },
+    data: {
+      paymentMethod: data.paymentMethod,
+      changeFor: data.changeFor ?? null,
+      notes: data.notes ?? null,
+    },
+    include: { ...includeItems, customer: true },
+  });
+}
+
 // Retirada: sem endereço e sem taxa
 export async function setPickup(orderId: number) {
   await getDraft(orderId);

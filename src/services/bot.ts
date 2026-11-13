@@ -2,6 +2,8 @@ import { generateReply } from "./ai";
 import { saveIncomingMessage, saveOutgoingMessage } from "./messages";
 import { getOrder } from "./orders";
 import { formatOrderReceipt } from "./receipt";
+import { confirmFromSummary } from "./summary";
+import { isPlainConfirmation } from "../lib/confirmation";
 import { sendText, type IncomingMessage } from "./whatsapp";
 
 // Envia uma mensagem ao cliente e salva no histórico
@@ -39,13 +41,24 @@ export async function handleIncomingMessage(message: IncomingMessage) {
   const replies: string[] = [];
 
   try {
-    const { text, confirmedOrderId } = await generateReply(saved.customerId, message.phone);
-    replies.push(text);
+    // Atalho: "sim" puro depois do resumo confirma sem chamar a IA (mesmas travas da ferramenta)
+    if (isPlainConfirmation(message.text)) {
+      const result = await confirmFromSummary(message.phone);
+      if (result.ok) {
+        replies.push("Pedido confirmado! ✅", formatOrderReceipt(result.order));
+      }
+      // Se uma trava falhar (sem resumo, loja fechada...), segue para a IA normalmente
+    }
 
-    // Pedido confirmado nesta resposta: o código monta o comprovante
-    if (confirmedOrderId) {
-      const order = await getOrder(confirmedOrderId);
-      replies.push(formatOrderReceipt(order));
+    if (replies.length === 0) {
+      const { text, confirmedOrderId } = await generateReply(saved.customerId, message.phone);
+      replies.push(text);
+
+      // Pedido confirmado nesta resposta: o código monta o comprovante
+      if (confirmedOrderId) {
+        const order = await getOrder(confirmedOrderId);
+        replies.push(formatOrderReceipt(order));
+      }
     }
   } catch (error) {
     console.error("Erro na IA", error);

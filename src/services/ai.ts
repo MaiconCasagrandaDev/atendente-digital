@@ -15,13 +15,14 @@ import { addItemSchema, confirmOrderSchema, deliverySchema } from "../schemas/or
 import { productOptionsSchema } from "../schemas/product";
 import {
   addItem,
-  confirmOrder,
   getOrCreateCart,
   orderLabel,
   removeItem,
   setDelivery,
+  setPayment,
   setPickup,
 } from "./orders";
+import { confirmFromSummary, formatOrderSummary, lastMessageIsSummary } from "./summary";
 import { getRecentMessages } from "./messages";
 
 // Desiste de uma chamada que passar de 30 segundos
@@ -141,18 +142,17 @@ Regras:
 - Só preencha a observação de um item quando o cliente pedir alguma mudança (ex.: "sem cebola"). Nunca use "sem alteração", "normal" ou parecidos.
 - Faça no máximo uma ou duas perguntas por mensagem.
 - Para fechar o pedido, pergunte se é entrega ou retirada.
-- Para entrega, peça o CEP e o número da casa (e, se o cliente quiser, complemento e ponto de referência) e chame definir_entrega. O sistema busca a rua, o bairro e a cidade pelo CEP: confirme com o cliente o endereço que voltar. Nunca invente nem complete um endereço por conta própria.
-- Quando definir_entrega der certo, repita o endereço completo e espere o cliente confirmar antes de perguntar a forma de pagamento.
+- Para entrega, peça o CEP e o número da casa (e, se o cliente quiser, complemento e ponto de referência) e chame definir_entrega. O sistema busca a rua, o bairro e a cidade pelo CEP. Nunca invente nem complete um endereço por conta própria.
 - Se definir_entrega pedir rua e bairro (CEP geral da cidade), pergunte ao cliente e chame de novo com a rua e o bairro, copiando como ele escreveu, inclusive números (ex.: "Villa Nova 2").
 - Se o cliente não souber o CEP, explique que ele é necessário para calcular a entrega, ou ofereça a retirada.
 - Se definir_entrega devolver erro (CEP inválido, fora da área, bairro não atendido), explique com as palavras do erro e ofereça a retirada.
 - Para retirada, chame definir_retirada.
-- Quando a mensagem vier do cardápio já com os dados de entrega (CEP, número, complemento) ou de retirada, e a forma de pagamento, use esses dados direto: chame definir_entrega (ou definir_retirada), mostre o resumo e peça a confirmação, sem perguntar de novo o que o cliente já informou.
+- Quando a mensagem vier do cardápio já com os dados de entrega (CEP, número, complemento) ou de retirada, e a forma de pagamento, use esses dados direto: chame definir_entrega (ou definir_retirada) e depois mostrar_resumo, sem perguntar de novo o que o cliente já informou.
 - Depois, pergunte a forma de pagamento: Pix, cartão ou dinheiro. Se for dinheiro, pergunte se precisa de troco e para quanto (o troco precisa cobrir o total com a entrega).
 - Sobre troco: ele precisa ser maior ou igual ao total. Nunca sugira valores de troco que o cliente não falou.
-- No resumo antes de confirmar, organize assim: 🛍️ *Seu pedido*, um item por linha com a observação entre parênteses (➤ 1x X-Bacon (sem cebola) — R$ 32,00); depois Subtotal, Taxa de entrega (se houver), 📍 o endereço completo ou "Retirada no balcão", 💳 a forma de pagamento e o *Total* em negrito; por fim, pergunte se está tudo certo.
-- Antes de confirmar, mostre o resumo com os itens e o total e pergunte se está tudo certo. Só chame confirmar_pedido depois que o cliente concordar.
-- Mesmo que o cliente já tenha passado todos os dados, sempre mostre o resumo e espere ele responder antes de chamar confirmar_pedido.
+- Para mostrar o resumo, chame mostrar_resumo com a forma de pagamento (e o troco ou a observação, se houver). Nunca escreva o resumo você mesmo.
+- Depois do resumo, se o cliente confirmar ("sim", "pode mandar", "tá certo"), chame confirmar_pedido.
+- Se o cliente mudar alguma coisa depois do resumo (item, endereço, pagamento), faça a mudança e chame mostrar_resumo de novo.
 - Depois de confirmar, responda só com uma frase curta de agradecimento. O comprovante completo do pedido é enviado automaticamente pelo sistema, então não repita os itens nem o total.
 - Se o cliente pedir para falar com uma pessoa, ou se você não souber responder, diga que vai chamar um atendente.
 - Se a loja estiver fechada, avise com simpatia e diga o horário de funcionamento. Pode mostrar o cardápio e tirar dúvidas, mas não confirme pedidos.
@@ -182,7 +182,7 @@ const functionDeclarations: FunctionDeclaration[] = [
   },
   {
     name: "remover_item",
-    description: "Remove um item do carrinho, pelo id do item (não do produto).",
+    description: "Remove um item do carrinho. Use o itemId do carrinho, não o id do produto.",
     parameters: {
       type: Type.OBJECT,
       properties: {
@@ -212,8 +212,9 @@ const functionDeclarations: FunctionDeclaration[] = [
     description: "Define que o cliente vai retirar no balcão. Sem endereço e sem taxa de entrega.",
   },
   {
-    name: "confirmar_pedido",
-    description: "Fecha o pedido. Só use depois de definir entrega ou retirada, mostrar o resumo e o cliente concordar.",
+    name: "mostrar_resumo",
+    description:
+      "Salva a forma de pagamento e envia ao cliente o resumo oficial do pedido. Chame depois de definir a entrega ou a retirada e de saber a forma de pagamento. O resumo vai direto ao cliente, então não escreva o resumo você mesmo.",
     parameters: {
       type: Type.OBJECT,
       properties: {
@@ -223,6 +224,10 @@ const functionDeclarations: FunctionDeclaration[] = [
       },
       required: ["paymentMethod"],
     },
+  },
+  {
+    name: "confirmar_pedido",
+    description: "Confirma o pedido. Chame só depois que o cliente disser que o resumo está certo.",
   },
 ];
 
@@ -241,6 +246,7 @@ type CartLike = {
   deliveryFee: { toFixed(digits: number): string; toNumber(): number };
   items: {
     id: number;
+    productId: number;
     quantity: number;
     notes: string | null;
     unitPrice: { toFixed(digits: number): string };
@@ -253,6 +259,7 @@ function summarizeCart(cart: CartLike) {
     status: cart.status,
     itens: cart.items.map((item) => ({
       itemId: item.id,
+      produtoId: item.productId,
       produto: item.product.name,
       quantidade: item.quantity,
       precoUnitario: item.unitPrice.toFixed(2),
@@ -266,8 +273,26 @@ function summarizeCart(cart: CartLike) {
   };
 }
 
-// O que aconteceu durante a resposta (ex.: pedido confirmado)
-type ReplyContext = { confirmedOrderId?: number };
+// Carrinho em texto para o prompt, separando o itemId (remover) do id do produto (adicionar)
+function describeCart(cart: CartLike) {
+  const itens = cart.items.length
+    ? cart.items
+        .map((item) => {
+          const obs = item.notes ? ` (obs.: ${item.notes})` : "";
+          return `- itemId ${item.id}: ${item.quantity}x ${item.product.name}${obs} (produto ${item.productId})`;
+        })
+        .join("\n")
+    : "- vazio";
+  const { tipoEntrega, endereco, subtotal, taxaEntrega, total } = summarizeCart(cart);
+  return [
+    "Itens (para remover, use o itemId; para adicionar, use o id do produto no cardápio):",
+    itens,
+    `Entrega: ${tipoEntrega}${endereco ? ` (${endereco})` : ""}. Subtotal R$ ${subtotal}, taxa de entrega R$ ${taxaEntrega}, total R$ ${total}.`,
+  ].join("\n");
+}
+
+// O que aconteceu durante a resposta (ex.: pedido confirmado, resumo para enviar)
+type ReplyContext = { confirmedOrderId?: number; summaryText?: string };
 
 // Executa a ferramenta que a IA pediu, usando os services que já existem
 async function runTool(name: string, args: Record<string, unknown>, phone: string, context: ReplyContext) {
@@ -336,36 +361,20 @@ async function runTool(name: string, args: Record<string, unknown>, phone: strin
       }
 
       case "confirmar_pedido": {
-        if (!isStoreOpen()) {
-          return {
-            erro: `A loja está fechada agora. Não confirme. Avise o cliente que o horário é ${describeHours()}.`,
-          };
-        }
+        const result = await confirmFromSummary(phone);
+        if (!result.ok) return { erro: result.erro };
+        context.confirmedOrderId = result.order.id;
+        return { confirmado: true, numeroDoPedido: orderLabel(result.order), ...summarizeCart(result.order) };
+      }
 
-        const data = validate(confirmOrderSchema, args);
+      case "mostrar_resumo": {
+        const parsed = confirmOrderSchema.safeParse(args);
+        if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Forma de pagamento inválida" };
 
         const cart = await getOrCreateCart(phone);
-
-        // Trava: a última mensagem do bot precisa ter mostrado o total atual do carrinho
-        const lastBotMessage = await prisma.message.findFirst({
-          where: { customer: { phone }, direction: "OUTBOUND" },
-          orderBy: { createdAt: "desc" },
-        });
-        const totalText = cart.total.toFixed(2).replace(".", ",");
-        const totalWithThousands = Number(cart.total).toLocaleString("pt-BR", {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-        });
-
-        if (![totalText, totalWithThousands].some((t) => lastBotMessage?.text.includes(t))) {
-          return {
-            erro: `Ainda não confirme. Mostre ao cliente o resumo com os itens e o total (R$ ${totalText}) e espere ele concordar.`,
-          };
-        }
-
-        const order = await confirmOrder(cart.id, data);
-        context.confirmedOrderId = order.id;
-        return { confirmado: true, numeroDoPedido: orderLabel(order), ...summarizeCart(order) };
+        const order = await setPayment(cart.id, parsed.data);
+        context.summaryText = formatOrderSummary(order);
+        return { ok: true };
       }
 
       default:
@@ -416,6 +425,9 @@ export async function generateReply(customerId: number, phone: string) {
 
   const cart = await getOrCreateCart(phone);
 
+  // O cliente está respondendo ao resumo oficial: avisa a IA para não refazer mudanças antigas
+  const answeringSummary = await lastMessageIsSummary(phone, cart);
+
   const replyConfig: GenerateContentConfig = {
     ...config,
     systemInstruction: [
@@ -425,7 +437,10 @@ export async function generateReply(customerId: number, phone: string) {
         ? `Link do cardápio com fotos: ${PUBLIC_URL}/cardapio. Envie esse link quando o cliente quiser ver as opções ou estiver indeciso.`
         : "",
       `Cardápio atual:\n${menu}`,
-      `Carrinho atual do cliente (já salvo no sistema): ${JSON.stringify(summarizeCart(cart))}`,
+      `Carrinho atual do cliente (já salvo no sistema):\n${describeCart(cart)}`,
+      answeringSummary
+        ? "A última mensagem enviada ao cliente foi o resumo oficial, e ele já inclui todas as mudanças pedidas antes. Não repita mudanças anteriores. Se o cliente concordar, chame confirmar_pedido. Se ele pedir uma mudança nova, faça só essa mudança e chame mostrar_resumo."
+        : "",
     ]
       .filter(Boolean)
       .join("\n\n"),
@@ -461,6 +476,12 @@ export async function generateReply(customerId: number, phone: string) {
       console.log(`[IA] ${call.name}`, call.args ?? {}, "->", JSON.stringify(toolResult));
       parts.push({ functionResponse: { id: call.id, name: call.name, response: toolResult } });
     }
+
+    // Resumo oficial: vai exatamente como o código montou, sem chamar o Gemini de novo
+    if (context.summaryText) {
+      return { text: context.summaryText, confirmedOrderId: context.confirmedOrderId };
+    }
+
     contents.push({ role: "user", parts });
   }
 
