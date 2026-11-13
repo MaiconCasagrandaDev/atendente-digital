@@ -8,6 +8,7 @@ import {
 } from "@google/genai";
 import { prisma } from "../lib/prisma";
 import { AppError } from "../lib/errors";
+import { customerMentionedNumber } from "../lib/address";
 import { describeHours, isStoreOpen } from "../lib/hours";
 import { parseId, validate } from "../lib/validate";
 import { addItemSchema, confirmOrderSchema, deliverySchema } from "../schemas/order";
@@ -141,7 +142,7 @@ Regras:
 - Faça no máximo uma ou duas perguntas por mensagem.
 - Para fechar o pedido, pergunte se é entrega ou retirada.
 - Para entrega, peça o CEP e o número da casa (e, se o cliente quiser, complemento e ponto de referência) e chame definir_entrega. O sistema busca a rua, o bairro e a cidade pelo CEP: confirme com o cliente o endereço que voltar. Nunca invente nem complete um endereço por conta própria.
-- Quando definir_entrega der certo, repita o endereço completo para o cliente conferir antes de seguir.
+- Quando definir_entrega der certo, repita o endereço completo e espere o cliente confirmar antes de perguntar a forma de pagamento.
 - Se definir_entrega pedir rua e bairro (CEP geral da cidade), pergunte ao cliente e chame de novo com a rua e o bairro, copiando como ele escreveu, inclusive números (ex.: "Villa Nova 2").
 - Se o cliente não souber o CEP, explique que ele é necessário para calcular a entrega, ou ofereça a retirada.
 - Se definir_entrega devolver erro (CEP inválido, fora da área, bairro não atendido), explique com as palavras do erro e ofereça a retirada.
@@ -311,6 +312,19 @@ async function runTool(name: string, args: Record<string, unknown>, phone: strin
           street: args.rua,
           neighborhood: args.bairro,
         });
+
+        // Trava: o número da casa precisa ter vindo do cliente, não da IA
+        const recent = await prisma.message.findMany({
+          where: { customer: { phone }, direction: "INBOUND" },
+          orderBy: { createdAt: "desc" },
+          take: 6,
+        });
+        if (!customerMentionedNumber(recent.map((m) => m.text).join(" "), data.number)) {
+          return {
+            erro: "O cliente ainda não informou o número da casa. Pergunte o número (ou se é sem número) antes de definir a entrega.",
+          };
+        }
+
         const cart = await getOrCreateCart(phone);
         return summarizeCart(await setDelivery(cart.id, data));
       }
