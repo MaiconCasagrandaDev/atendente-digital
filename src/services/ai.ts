@@ -9,6 +9,7 @@ import {
 import { prisma } from "../lib/prisma";
 import { AppError } from "../lib/errors";
 import { customerMentionedNumber } from "../lib/address";
+import { searchStreet } from "../lib/street-search";
 import { describeHours, isStoreOpen } from "../lib/hours";
 import { parseId, validate } from "../lib/validate";
 import { addItemSchema, confirmOrderSchema, deliverySchema } from "../schemas/order";
@@ -144,7 +145,7 @@ Regras:
 - Para fechar o pedido, pergunte se é entrega ou retirada.
 - Para entrega, peça o CEP e o número da casa (e, se o cliente quiser, complemento e ponto de referência) e chame definir_entrega. O sistema busca a rua, o bairro e a cidade pelo CEP. Nunca invente nem complete um endereço por conta própria.
 - Se definir_entrega pedir rua e bairro (CEP geral da cidade), pergunte ao cliente e chame de novo com a rua e o bairro, copiando como ele escreveu, inclusive números (ex.: "Villa Nova 2").
-- Se o cliente não souber o CEP, explique que ele é necessário para calcular a entrega, ou ofereça a retirada.
+- Se o cliente não souber o CEP, peça o nome da rua e chame buscar_cep. Mostre as opções numeradas (rua, faixa de números se houver, bairro e CEP) e use o CEP da opção escolhida em definir_entrega. Se vier uma opção só, confirme com o cliente antes de usar. Nunca invente nem adivinhe um CEP. Se a rua não for encontrada depois de conferir o nome, ofereça a retirada no balcão. Se aproximado vier true, diga que não achou exatamente esse nome e pergunte se é uma das ruas parecidas, escrevendo o nome como veio na busca.
 - Se definir_entrega devolver erro (CEP inválido, fora da área, bairro não atendido), explique com as palavras do erro e ofereça a retirada.
 - Para retirada, chame definir_retirada.
 - Quando a mensagem vier do cardápio já com os dados de entrega (CEP, número, complemento) ou de retirada, e a forma de pagamento, use esses dados direto: chame definir_entrega (ou definir_retirada) e depois mostrar_resumo, sem perguntar de novo o que o cliente já informou.
@@ -205,6 +206,17 @@ const functionDeclarations: FunctionDeclaration[] = [
         bairro: { type: Type.STRING, description: "só quando o sistema pedir (CEP geral da cidade)" },
       },
       required: ["cep", "numero"],
+    },
+  },
+  {
+    name: "buscar_cep",
+    description: "Busca o CEP pelo nome da rua, na cidade da loja. Use quando o cliente não souber o CEP.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        rua: { type: Type.STRING, description: "nome da rua, como o cliente escreveu" },
+      },
+      required: ["rua"],
     },
   },
   {
@@ -353,6 +365,23 @@ async function runTool(name: string, args: Record<string, unknown>, phone: strin
 
         const cart = await getOrCreateCart(phone);
         return summarizeCart(await setDelivery(cart.id, data));
+      }
+
+      case "buscar_cep": {
+        const city = process.env.STORE_CITY;
+        const state = process.env.STORE_STATE;
+        if (!city || !state) return { erro: "A busca por rua não está configurada. Peça o CEP ao cliente." };
+
+        const busca = await searchStreet(String(args.rua ?? ""), city, state);
+        if (busca === null) return { erro: "A busca de CEP está fora do ar. Peça o CEP ao cliente." };
+        if (busca.results.length === 0) {
+          return { erro: "Nenhuma rua encontrada com esse nome. Peça para o cliente conferir o nome." };
+        }
+        // CEP com traço, para a IA mostrar ao cliente como 95706-114
+        return {
+          opcoes: busca.results.slice(0, 8).map((r) => ({ ...r, cep: r.cep.replace(/^(\d{5})(\d{3})$/, "$1-$2") })),
+          aproximado: busca.approximate,
+        };
       }
 
       case "definir_retirada": {

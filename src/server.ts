@@ -9,6 +9,7 @@ import { devRouter } from "./routes/dev";
 import { deliveryRouter } from "./routes/delivery";
 import { rateLimit } from "./lib/rate-limit";
 import { deliveryProblem, quoteDelivery } from "./services/delivery";
+import { searchStreet } from "./lib/street-search";
 
 const app = express();
 
@@ -59,6 +60,30 @@ app.get("/delivery/quote", rateLimit({ windowMs: 60_000, max: 20 }), async (req,
     state: quote.address.state,
     fee: quote.fee.toFixed(2),
   });
+});
+
+// GET /delivery/streets?q=...: ruas da cidade da loja, para quem não sabe o CEP
+app.get("/delivery/streets", rateLimit({ windowMs: 60_000, max: 30 }), async (req, res) => {
+  const q = String(req.query.q ?? "").trim();
+  if (q.length < 3 || q.length > 80) {
+    res.status(400).json({ error: "Digite de 3 a 80 letras do nome da rua." });
+    return;
+  }
+
+  const city = process.env.STORE_CITY;
+  const state = process.env.STORE_STATE;
+  if (!city || !state) {
+    res.status(503).json({ error: "A busca por rua não está disponível. Informe o CEP." });
+    return;
+  }
+
+  const busca = await searchStreet(q, city, state);
+  if (busca === null) {
+    res.status(503).json({ error: "Não foi possível buscar agora. Tente de novo ou informe o CEP." });
+    return;
+  }
+
+  res.json(busca); // { results, approximate }
 });
 
 // Cardápio digital

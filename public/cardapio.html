@@ -290,6 +290,28 @@
       cursor: pointer;
     }
     .checkout-rodape button:disabled { opacity: 0.5; cursor: default; }
+    .link {
+      background: none;
+      border: none;
+      padding: 4px 0;
+      color: var(--destaque);
+      text-decoration: underline;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    .resultados { list-style: none; margin: 6px 0 0; padding: 0; max-height: 260px; overflow-y: auto; }
+    .resultados button {
+      width: 100%;
+      text-align: left;
+      padding: 10px 12px;
+      margin-bottom: 6px;
+      border: 1px solid var(--borda);
+      border-radius: 10px;
+      background: #fff;
+      font-size: 15px;
+      cursor: pointer;
+    }
+    .resultados .desc { font-size: 13px; color: #666; }
   </style>
 </head>
 <body>
@@ -348,6 +370,14 @@
             <input id="cep" inputmode="numeric" maxlength="9" placeholder="00000-000" autocomplete="postal-code" />
           </label>
           <p id="cep-status" class="status"></p>
+          <button type="button" id="nao-sei-cep" class="link">Não sei meu CEP</button>
+          <div id="busca-rua" hidden>
+            <label>Nome da rua
+              <input id="rua-busca" placeholder="ex.: Marechal Deodoro" autocomplete="off" />
+            </label>
+            <p id="rua-status" class="status"></p>
+            <ul id="rua-resultados" class="resultados"></ul>
+          </div>
 
           <div id="campos-cep-geral" hidden>
             <label>Rua <input id="rua" autocomplete="address-line1" /></label>
@@ -870,6 +900,81 @@
       partes.push("", `💳 Pagamento: ${NOMES_PAGAMENTO[pagamento]}${troco ? `, troco para ${dinheiro(troco)}` : ""}`);
 
       window.location.href = linkPedido + encodeURIComponent(partes.join("\n"));
+    });
+
+    // ---------- Não sei meu CEP ----------
+
+    let esperaRua = null;
+    let numeroBuscaRua = 0;
+
+    function mostrarStatusRua(texto, tipo = "") {
+      $("rua-status").textContent = texto;
+      $("rua-status").className = "status " + tipo;
+    }
+
+    $("nao-sei-cep").addEventListener("click", () => {
+      $("busca-rua").hidden = false;
+      $("rua-busca").focus();
+    });
+
+    $("rua-busca").addEventListener("input", () => {
+      clearTimeout(esperaRua);
+      numeroBuscaRua++; // descarta buscas que ainda estão no caminho
+      $("rua-resultados").innerHTML = "";
+      const q = $("rua-busca").value.trim();
+      if (q.length < 3) {
+        mostrarStatusRua(q ? "Digite pelo menos 3 letras." : "");
+        return;
+      }
+      esperaRua = setTimeout(() => buscarRua(q), 500);
+    });
+
+    async function buscarRua(q) {
+      const minhaBusca = ++numeroBuscaRua;
+      mostrarStatusRua("Buscando...");
+      try {
+        const resposta = await fetch(`/delivery/streets?q=${encodeURIComponent(q)}`);
+        const dados = await resposta.json();
+        if (minhaBusca !== numeroBuscaRua) return;
+
+        if (!resposta.ok) return mostrarStatusRua(dados.error || "Não foi possível buscar.", "erro");
+        if (dados.results.length === 0) {
+          return mostrarStatusRua("Não achamos essa rua. Confira o nome ou informe o CEP.", "erro");
+        }
+
+        mostrarStatusRua(
+          dados.approximate ? "Não achamos exatamente esse nome. Seria uma destas?" : "Toque no seu endereço:",
+        );
+        $("rua-resultados").innerHTML = dados.results
+          .map((e) => {
+            const faixa = e.complement ? ` <span class="desc">(${escapar(e.complement)})</span>` : "";
+            const cepFormatado = e.cep.replace(/^(\d{5})(\d{3})$/, "$1-$2"); // a API devolve só os dígitos
+            return `
+              <li><button type="button" data-cep="${escapar(e.cep)}">
+                <strong>${escapar(e.street)}</strong>${faixa}<br>
+                <span class="desc">${escapar(e.neighborhood)} · CEP ${escapar(cepFormatado)}</span>
+              </button></li>`;
+          })
+          .join("");
+      } catch {
+        if (minhaBusca !== numeroBuscaRua) return;
+        mostrarStatusRua("Não foi possível buscar agora. Tente de novo ou informe o CEP.", "erro");
+      }
+    }
+
+    $("rua-resultados").addEventListener("click", (evento) => {
+      const botao = evento.target.closest("button[data-cep]");
+      if (!botao) return;
+
+      // Preenche o CEP e usa o mesmo caminho da digitação: formata, consulta e mostra a taxa
+      $("cep").value = botao.dataset.cep;
+      $("cep").dispatchEvent(new Event("input"));
+
+      $("busca-rua").hidden = true;
+      $("rua-resultados").innerHTML = "";
+      $("rua-busca").value = "";
+      mostrarStatusRua("");
+      $("numero").focus();
     });
 
     // ---------- Início ----------

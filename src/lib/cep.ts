@@ -35,3 +35,52 @@ export async function lookupCep(input: string, fetchImpl: typeof fetch = fetch):
     state: String(data.uf ?? ""),
   };
 }
+
+export type StreetResult = {
+  cep: string;
+  street: string;
+  complement: string; // ex.: "de 1001/1002 a 2000/2001" em ruas longas
+  neighborhood: string;
+  city: string;
+  state: string;
+};
+
+// Tira "Rua", "Av." etc. do começo: o ViaCEP busca pelo nome
+function cleanStreetQuery(text: string) {
+  return text
+    .replace(/[\/\\?#%]/g, " ")
+    .replace(/^\s*(rua|r\.|avenida|av\.?|travessa|tv\.?|estrada|rodovia|alameda)\s+/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// [] = nenhuma rua encontrada; null = ViaCEP fora do ar ou lento
+export async function lookupStreet(
+  street: string,
+  city: string,
+  state: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<StreetResult[] | null> {
+  const query = cleanStreetQuery(street);
+  if (query.length < 3) return [];
+
+  const url = `https://viacep.com.br/ws/${encodeURIComponent(state)}/${encodeURIComponent(city)}/${encodeURIComponent(query)}/json/`;
+  try {
+    const response = await fetchImpl(url, { signal: AbortSignal.timeout(5000) });
+    if (!response.ok) return null;
+
+    const data: unknown = await response.json();
+    if (!Array.isArray(data)) return null;
+
+    return (data as Record<string, unknown>[]).map((d) => ({
+      cep: normalizeCep(String(d.cep ?? "")) ?? "",
+      street: String(d.logradouro ?? ""),
+      complement: String(d.complemento ?? ""),
+      neighborhood: String(d.bairro ?? ""),
+      city: String(d.localidade ?? ""),
+      state: String(d.uf ?? ""),
+    }));
+  } catch {
+    return null;
+  }
+}
