@@ -120,6 +120,26 @@
       cursor: pointer;
     }
     .erro { color: var(--perigo); font-size: 14px; }
+
+    /* Abas Pedidos / Entrega (sem o sticky do nav dos status, para não ficar uma em cima da outra) */
+    .abas { display: flex; gap: 8px; margin: 12px 0; }
+    nav.abas { position: static; border-bottom: none; margin: 0; }
+    .abas button { padding: 8px 16px; border-radius: 20px; border: 1px solid #ccc; background: #fff; cursor: pointer; }
+    .abas button.ativa { background: #222; color: #fff; border-color: #222; }
+    #aba-entrega { max-width: 760px; margin: 0 auto; padding: 12px 16px 40px; }
+    .cartao { background: #fff; border: 1px solid #ddd; border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+    .cartao h2 { margin: 0 0 12px; font-size: 18px; }
+    .linha-form { display: flex; gap: 8px; flex-wrap: wrap; }
+    .linha-form input { flex: 1 1 140px; padding: 10px; font-size: 15px; border: 1px solid #ccc; border-radius: 8px; }
+    .linha-form button { padding: 10px 16px; border-radius: 8px; border: none; background: #222; color: #fff; cursor: pointer; }
+    .resultado { margin-top: 12px; line-height: 1.5; }
+    .ajuda { color: #666; font-size: 14px; }
+    .status.erro { color: #c92a2a; }
+    .status.ok { color: #2b8a3e; }
+    .tabela-bairros { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    .tabela-bairros th, .tabela-bairros td { text-align: left; padding: 8px 4px; border-bottom: 1px solid #eee; }
+    .tabela-bairros input.taxa { width: 90px; padding: 6px; border: 1px solid #ccc; border-radius: 6px; }
+    .tabela-bairros tr.inativo td:first-child { color: #999; text-decoration: line-through; }
   </style>
 </head>
 <body>
@@ -139,8 +159,43 @@
       <span class="vivo" id="vivo">● ao vivo</span>
       <button id="sair" type="button">Sair</button>
     </header>
-    <nav id="abas"></nav>
-    <main id="lista"></main>
+    <nav class="abas">
+      <button type="button" data-aba="pedidos" class="ativa">Pedidos</button>
+      <button type="button" data-aba="entrega">Entrega</button>
+    </nav>
+
+    <section id="aba-pedidos">
+      <nav id="abas"></nav>
+      <main id="lista"></main>
+    </section>
+
+    <section id="aba-entrega" hidden>
+      <div class="cartao">
+        <h2>Testar um CEP</h2>
+        <form id="form-teste-cep" class="linha-form">
+          <input id="teste-cep" inputmode="numeric" maxlength="9" placeholder="00000-000" required />
+          <button type="submit">Testar</button>
+        </form>
+        <div id="resultado-cep" class="resultado"></div>
+      </div>
+
+      <div class="cartao">
+        <h2>Bairros atendidos</h2>
+        <p class="ajuda">Bairros fora da lista pagam a taxa padrão: <strong id="taxa-padrao">—</strong></p>
+
+        <form id="form-bairro" class="linha-form">
+          <input id="novo-bairro" placeholder="Nome do bairro" required />
+          <input id="nova-taxa" inputmode="decimal" placeholder="Taxa (ex.: 6,00)" required />
+          <button type="submit">Adicionar</button>
+        </form>
+        <p id="bairro-status" class="status"></p>
+
+        <table class="tabela-bairros">
+          <thead><tr><th>Bairro</th><th>Taxa</th><th>Ativo</th><th></th></tr></thead>
+          <tbody id="lista-bairros"></tbody>
+        </table>
+      </div>
+    </section>
   </div>
 
   <script>
@@ -236,7 +291,11 @@
         throw new Error("401");
       }
       const dados = await resposta.json().catch(() => null);
-      if (!resposta.ok) throw new Error(dados?.error || "Erro ao falar com o servidor");
+      if (!resposta.ok) {
+        const erro = new Error(dados?.error || "Erro ao falar com o servidor");
+        erro.dados = dados; // o teste de CEP usa o endereço que vem junto com o erro
+        throw erro;
+      }
       return dados;
     }
 
@@ -362,6 +421,138 @@
         ocupado = false;
         await carregar();
       }
+    });
+
+    // ---------- Abas Pedidos / Entrega ----------
+
+    document.querySelectorAll(".abas button").forEach((botao) =>
+      botao.addEventListener("click", () => {
+        document.querySelectorAll(".abas button").forEach((b) => b.classList.toggle("ativa", b === botao));
+        document.getElementById("aba-pedidos").hidden = botao.dataset.aba !== "pedidos";
+        document.getElementById("aba-entrega").hidden = botao.dataset.aba !== "entrega";
+        if (botao.dataset.aba === "entrega") carregarBairros();
+      }),
+    );
+
+    // ---------- Entrega ----------
+
+    // "6,00", "6.00" e "6" viram 6; texto inválido vira NaN
+    function lerTaxa(texto) {
+      const t = String(texto).trim();
+      const n = t.includes(",") ? Number(t.replace(/\./g, "").replace(",", ".")) : Number(t);
+      return t && Number.isFinite(n) && n >= 0 && n <= 999 ? n : NaN;
+    }
+
+    function statusBairro(texto, tipo = "") {
+      const p = document.getElementById("bairro-status");
+      p.textContent = texto;
+      p.className = "status " + tipo;
+    }
+
+    async function carregarBairros() {
+      try {
+        const [zonas, loja] = await Promise.all([api("/delivery-zones"), fetch("/store").then((r) => r.json())]);
+        document.getElementById("taxa-padrao").textContent = loja.deliveryDefaultFee
+          ? dinheiro(loja.deliveryDefaultFee)
+          : "não definida (bairros fora da lista não são atendidos)";
+
+        zonas.sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+        document.getElementById("lista-bairros").innerHTML = zonas
+          .map(
+            (z) => `
+            <tr data-id="${z.id}" class="${z.active ? "" : "inativo"}">
+              <td>${escapar(z.name)}</td>
+              <td><input class="taxa" inputmode="decimal" value="${Number(z.fee).toFixed(2).replace(".", ",")}" /></td>
+              <td><input type="checkbox" class="ativo" ${z.active ? "checked" : ""} /></td>
+              <td><button type="button" class="salvar">Salvar</button></td>
+            </tr>`,
+          )
+          .join("");
+      } catch (erro) {
+        if (erro.message !== "401") statusBairro("Não foi possível carregar os bairros: " + erro.message, "erro");
+      }
+    }
+
+    document.getElementById("lista-bairros").addEventListener("click", async (evento) => {
+      const botao = evento.target.closest("button.salvar");
+      if (!botao) return;
+      const linha = botao.closest("tr");
+      const fee = lerTaxa(linha.querySelector(".taxa").value);
+      if (Number.isNaN(fee)) return statusBairro("Taxa inválida. Use, por exemplo, 6,00.", "erro");
+
+      try {
+        await api(`/delivery-zones/${linha.dataset.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ fee, active: linha.querySelector(".ativo").checked }),
+        });
+        statusBairro("Bairro salvo.", "ok");
+        carregarBairros();
+      } catch (erro) {
+        if (erro.message !== "401") statusBairro(erro.message, "erro");
+      }
+    });
+
+    document.getElementById("form-bairro").addEventListener("submit", async (evento) => {
+      evento.preventDefault();
+      const name = document.getElementById("novo-bairro").value.trim();
+      const fee = lerTaxa(document.getElementById("nova-taxa").value);
+      if (name.length < 2) return statusBairro("Digite o nome do bairro.", "erro");
+      if (Number.isNaN(fee)) return statusBairro("Taxa inválida. Use, por exemplo, 6,00.", "erro");
+
+      try {
+        await api("/delivery-zones", { method: "POST", body: JSON.stringify({ name, fee }) });
+        document.getElementById("form-bairro").reset();
+        statusBairro(`Bairro "${name}" adicionado.`, "ok");
+        carregarBairros();
+      } catch (erro) {
+        if (erro.message !== "401") statusBairro(erro.message, "erro"); // ex.: "Já existe um bairro com esse nome"
+      }
+    });
+
+    const botaoCadastrar = (nome) =>
+      `<button type="button" id="cadastrar-bairro" data-nome="${escapar(nome)}">Cadastrar este bairro</button>`;
+
+    document.getElementById("form-teste-cep").addEventListener("submit", async (evento) => {
+      evento.preventDefault();
+      const cep = document.getElementById("teste-cep").value.replace(/\D/g, "");
+      const caixa = document.getElementById("resultado-cep");
+      if (cep.length !== 8) return (caixa.textContent = "Digite um CEP com 8 números.");
+
+      caixa.textContent = "Consultando...";
+      try {
+        const d = await api(`/delivery-zones/check/${cep}`);
+        const rua = d.street ? `${escapar(d.street)}, ` : "";
+        let html = `📍 ${rua}<strong>${escapar(d.neighborhood)}</strong> — ${escapar(d.city)}/${escapar(d.state)}<br>`;
+
+        if (d.zone && d.zone.active) {
+          html += `✅ Bairro cadastrado como "${escapar(d.zone.name)}" · taxa ${dinheiro(d.fee)}`;
+        } else if (d.zone) {
+          html += `⚠️ Bairro "${escapar(d.zone.name)}" está desativado · hoje cobra ${dinheiro(d.fee)}`;
+        } else {
+          html += `ℹ️ Bairro não cadastrado · cobra a taxa padrão ${dinheiro(d.fee)}<br>${botaoCadastrar(d.neighborhood)}`;
+        }
+        caixa.innerHTML = html;
+      } catch (erro) {
+        // Sem taxa padrão, bairro fora da lista (ou desativado) vem como erro, mas com o endereço
+        const d = erro.dados;
+        if (d?.reason === "not_served" && d.neighborhood) {
+          const rua = d.street ? `${escapar(d.street)}, ` : "";
+          caixa.innerHTML =
+            `📍 ${rua}<strong>${escapar(d.neighborhood)}</strong> — ${escapar(d.city)}/${escapar(d.state)}<br>` +
+            (d.zone
+              ? `⚠️ Bairro "${escapar(d.zone.name)}" está desativado · hoje não entregamos aqui`
+              : `❌ Bairro não cadastrado e sem taxa padrão · hoje não entregamos aqui<br>${botaoCadastrar(d.neighborhood)}`);
+        } else if (erro.message !== "401") {
+          caixa.textContent = erro.message;
+        }
+      }
+    });
+
+    document.getElementById("resultado-cep").addEventListener("click", (evento) => {
+      const botao = evento.target.closest("#cadastrar-bairro");
+      if (!botao) return;
+      document.getElementById("novo-bairro").value = botao.dataset.nome;
+      document.getElementById("nova-taxa").focus();
     });
 
     // ---------- Entrar e sair ----------

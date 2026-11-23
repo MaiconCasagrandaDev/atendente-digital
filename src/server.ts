@@ -8,7 +8,7 @@ import { webhookRouter } from "./routes/webhook";
 import { devRouter } from "./routes/dev";
 import { deliveryRouter } from "./routes/delivery";
 import { rateLimit } from "./lib/rate-limit";
-import { deliveryProblem, quoteDelivery } from "./services/delivery";
+import { defaultFee, deliveryProblem, quoteDelivery } from "./services/delivery";
 import { searchStreet } from "./lib/street-search";
 
 const app = express();
@@ -30,6 +30,7 @@ app.get("/store", (_req, res) => {
     hours: describeHours(),
     contactWhatsapp: process.env.CONTACT_WHATSAPP?.replace(/\D/g, "") || null,
     contactName: process.env.CONTACT_NAME || null,
+    deliveryDefaultFee: defaultFee()?.toFixed(2) ?? null,
   });
 });
 

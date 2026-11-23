@@ -28,7 +28,8 @@ export function feeFor(zones: Zone[], neighborhood: string, defaultFee: Prisma.D
   return null;
 }
 
-function defaultFee() {
+// Taxa para bairro fora da lista (DELIVERY_DEFAULT_FEE, aceita "5,50"); null = não entrega
+export function defaultFee() {
   const raw = process.env.DELIVERY_DEFAULT_FEE?.trim().replace(",", ".");
   return raw ? new Prisma.Decimal(raw) : null;
 }
