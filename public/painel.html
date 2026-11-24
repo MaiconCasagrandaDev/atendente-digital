@@ -140,6 +140,7 @@
     .tabela-bairros th, .tabela-bairros td { text-align: left; padding: 8px 4px; border-bottom: 1px solid #eee; }
     .tabela-bairros input.taxa { width: 90px; padding: 6px; border: 1px solid #ccc; border-radius: 6px; }
     .tabela-bairros tr.inativo td:first-child { color: #999; text-decoration: line-through; }
+    .tabela-bairros button.excluir { background: none; border: none; font-size: 18px; cursor: pointer; padding: 4px; }
   </style>
 </head>
 <body>
@@ -191,7 +192,7 @@
         <p id="bairro-status" class="status"></p>
 
         <table class="tabela-bairros">
-          <thead><tr><th>Bairro</th><th>Taxa</th><th>Ativo</th><th></th></tr></thead>
+          <thead><tr><th>Bairro</th><th>Taxa</th><th>Ativo</th><th></th><th></th></tr></thead>
           <tbody id="lista-bairros"></tbody>
         </table>
       </div>
@@ -290,6 +291,7 @@
         sair();
         throw new Error("401");
       }
+      if (resposta.status === 204) return null; // sem corpo (ex.: bairro excluído)
       const dados = await resposta.json().catch(() => null);
       if (!resposta.ok) {
         const erro = new Error(dados?.error || "Erro ao falar com o servidor");
@@ -449,9 +451,12 @@
       p.className = "status " + tipo;
     }
 
+    let taxaPadraoAtual = null; // usada no aviso de excluir bairro
+
     async function carregarBairros() {
       try {
         const [zonas, loja] = await Promise.all([api("/delivery-zones"), fetch("/store").then((r) => r.json())]);
+        taxaPadraoAtual = loja.deliveryDefaultFee;
         document.getElementById("taxa-padrao").textContent = loja.deliveryDefaultFee
           ? dinheiro(loja.deliveryDefaultFee)
           : "não definida (bairros fora da lista não são atendidos)";
@@ -465,6 +470,7 @@
               <td><input class="taxa" inputmode="decimal" value="${Number(z.fee).toFixed(2).replace(".", ",")}" /></td>
               <td><input type="checkbox" class="ativo" ${z.active ? "checked" : ""} /></td>
               <td><button type="button" class="salvar">Salvar</button></td>
+              <td><button type="button" class="excluir" aria-label="Excluir ${escapar(z.name)}" title="Excluir">🗑️</button></td>
             </tr>`,
           )
           .join("");
@@ -474,6 +480,26 @@
     }
 
     document.getElementById("lista-bairros").addEventListener("click", async (evento) => {
+      const lixeira = evento.target.closest("button.excluir");
+      if (lixeira) {
+        const linha = lixeira.closest("tr");
+        const nome = linha.querySelector("td").textContent;
+        const depois = taxaPadraoAtual
+          ? `Clientes desse bairro passam a pagar a taxa padrão (${dinheiro(taxaPadraoAtual)}).`
+          : "Clientes desse bairro deixam de ser atendidos.";
+
+        if (!confirm(`Excluir o bairro "${nome}"?\n\n${depois}\n\nSe for só por um tempo, prefira desativar.`)) return;
+
+        try {
+          await api(`/delivery-zones/${linha.dataset.id}`, { method: "DELETE" });
+          statusBairro(`Bairro "${nome}" excluído.`, "ok");
+          carregarBairros();
+        } catch (erro) {
+          if (erro.message !== "401") statusBairro(erro.message, "erro");
+        }
+        return;
+      }
+
       const botao = evento.target.closest("button.salvar");
       if (!botao) return;
       const linha = botao.closest("tr");

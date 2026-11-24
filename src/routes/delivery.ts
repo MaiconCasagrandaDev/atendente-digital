@@ -77,3 +77,13 @@ deliveryRouter.patch("/:id", async (req, res) => {
     .catch(rethrowDuplicate);
   res.json(zone);
 });
+
+// DELETE /delivery-zones/:id: exclui um bairro (os pedidos antigos guardam o endereço e a taxa)
+deliveryRouter.delete("/:id", async (req, res) => {
+  const id = parseId(req.params.id);
+  const zone = await prisma.deliveryZone.findUnique({ where: { id } });
+  if (!zone) throw new AppError(404, "Bairro não encontrado");
+
+  await prisma.deliveryZone.delete({ where: { id } });
+  res.status(204).end();
+});
