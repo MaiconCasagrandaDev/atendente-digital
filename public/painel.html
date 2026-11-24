@@ -140,6 +140,8 @@
     .tabela-bairros th, .tabela-bairros td { text-align: left; padding: 8px 4px; border-bottom: 1px solid #eee; }
     .tabela-bairros input.taxa { width: 90px; padding: 6px; border: 1px solid #ccc; border-radius: 6px; }
     .tabela-bairros tr.inativo td:first-child { color: #999; text-decoration: line-through; }
+    .tabela-rolagem { overflow-x: auto; } /* no celular, a tabela rola para o lado dentro do cartão */
+    .tabela-bairros th:nth-child(2) { font-size: 12px; } /* "Correios" mais curto */
     .tabela-bairros button.excluir { background: none; border: none; font-size: 18px; cursor: pointer; padding: 4px; }
   </style>
 </head>
@@ -182,19 +184,23 @@
 
       <div class="cartao">
         <h2>Bairros atendidos</h2>
+        <p class="ajuda">✅ = nome confirmado por um CEP · ⚠️ = ainda não confirmado. Na dúvida, teste acima o CEP de uma rua do bairro.</p>
         <p class="ajuda">Bairros fora da lista pagam a taxa padrão: <strong id="taxa-padrao">—</strong></p>
 
         <form id="form-bairro" class="linha-form">
-          <input id="novo-bairro" placeholder="Nome do bairro" required />
+          <input id="novo-bairro" placeholder="Nome do bairro" list="bairros-conhecidos" autocomplete="off" required />
+          <datalist id="bairros-conhecidos"></datalist>
           <input id="nova-taxa" inputmode="decimal" placeholder="Taxa (ex.: 6,00)" required />
           <button type="submit">Adicionar</button>
         </form>
         <p id="bairro-status" class="status"></p>
 
-        <table class="tabela-bairros">
-          <thead><tr><th>Bairro</th><th>Taxa</th><th>Ativo</th><th></th><th></th></tr></thead>
-          <tbody id="lista-bairros"></tbody>
-        </table>
+        <div class="tabela-rolagem">
+          <table class="tabela-bairros">
+            <thead><tr><th>Bairro</th><th>Correios</th><th>Taxa</th><th>Ativo</th><th></th><th></th></tr></thead>
+            <tbody id="lista-bairros"></tbody>
+          </table>
+        </div>
       </div>
     </section>
   </div>
@@ -294,7 +300,10 @@
       if (resposta.status === 204) return null; // sem corpo (ex.: bairro excluído)
       const dados = await resposta.json().catch(() => null);
       if (!resposta.ok) {
-        const erro = new Error(dados?.error || "Erro ao falar com o servidor");
+        // Erro de validação: mostra o motivo (ex.: "Use só letras...") em vez de só "Dados inválidos"
+        const detalhe =
+          dados?.details?.formErrors?.[0] ?? Object.values(dados?.details?.fieldErrors ?? {}).flat()[0];
+        const erro = new Error(detalhe || dados?.error || "Erro ao falar com o servidor");
         erro.dados = dados; // o teste de CEP usa o endereço que vem junto com o erro
         throw erro;
       }
@@ -452,11 +461,24 @@
     }
 
     let taxaPadraoAtual = null; // usada no aviso de excluir bairro
+    let zonasAtuais = [];       // usada no aviso de nome parecido, no teste de CEP
 
     async function carregarBairros() {
       try {
-        const [zonas, loja] = await Promise.all([api("/delivery-zones"), fetch("/store").then((r) => r.json())]);
+        const [zonas, loja, conhecidos] = await Promise.all([
+          api("/delivery-zones"),
+          fetch("/store").then((r) => r.json()),
+          api("/delivery-zones/known"),
+        ]);
         taxaPadraoAtual = loja.deliveryDefaultFee;
+        zonasAtuais = zonas;
+
+        // Sugestões do campo de nome: bairros da cidade que ainda não estão cadastrados
+        const cadastrados = new Set(zonas.map((z) => z.name.toLowerCase()));
+        document.getElementById("bairros-conhecidos").innerHTML = conhecidos.neighborhoods
+          .filter((n) => !cadastrados.has(n.toLowerCase()))
+          .map((n) => `<option value="${escapar(n)}"></option>`)
+          .join("");
         document.getElementById("taxa-padrao").textContent = loja.deliveryDefaultFee
           ? dinheiro(loja.deliveryDefaultFee)
           : "não definida (bairros fora da lista não são atendidos)";
@@ -467,6 +489,11 @@
             (z) => `
             <tr data-id="${z.id}" class="${z.active ? "" : "inativo"}">
               <td>${escapar(z.name)}</td>
+              <td title="${z.verifiedAt
+                ? "Algum CEP já caiu neste bairro: o nome bate com o dos Correios."
+                : "Ainda não apareceu em nenhum CEP. Teste o CEP de uma rua deste bairro para conferir o nome."}">
+                ${z.verifiedAt ? "✅" : "⚠️"}
+              </td>
               <td><input class="taxa" inputmode="decimal" value="${Number(z.fee).toFixed(2).replace(".", ",")}" /></td>
               <td><input type="checkbox" class="ativo" ${z.active ? "checked" : ""} /></td>
               <td><button type="button" class="salvar">Salvar</button></td>
@@ -535,8 +562,28 @@
       }
     });
 
-    const botaoCadastrar = (nome) =>
-      `<button type="button" id="cadastrar-bairro" data-nome="${escapar(nome)}">Cadastrar este bairro</button>`;
+    // Bairro do CEP que não está na lista: avisa se há um nome parecido e oferece cadastrar pelo CEP.
+    // "hoje" diz o que acontece agora com esse CEP (taxa padrão ou sem entrega).
+    function bairroNaoCadastrado(d, cep, hoje) {
+      // Nome parecido já cadastrado? (ex.: "Vila Nova" x "Vila Nova II")
+      const norm = (t) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+      const bairroCep = norm(d.neighborhood);
+      const parecido = zonasAtuais.find((z) => {
+        const n = norm(z.name);
+        return n !== bairroCep && (bairroCep.includes(n) || n.includes(bairroCep));
+      });
+
+      const taxaSugerida = parecido ? Number(parecido.fee).toFixed(2).replace(".", ",") : "";
+      const aviso = parecido
+        ? `⚠️ Os Correios chamam este bairro de <strong>"${escapar(d.neighborhood)}"</strong>. Você cadastrou <strong>"${escapar(parecido.name)}"</strong>. ${hoje}.`
+        : `ℹ️ Bairro não cadastrado · ${hoje}.`;
+
+      return `${aviso}
+        <form id="form-cadastrar" class="linha-form" data-cep="${escapar(cep)}">
+          <input id="taxa-cep" inputmode="decimal" placeholder="Taxa (ex.: 6,00)" value="${taxaSugerida}" required />
+          <button type="submit">Cadastrar "${escapar(d.neighborhood)}"</button>
+        </form>`;
+    }
 
     document.getElementById("form-teste-cep").addEventListener("submit", async (evento) => {
       evento.preventDefault();
@@ -555,7 +602,7 @@
         } else if (d.zone) {
           html += `⚠️ Bairro "${escapar(d.zone.name)}" está desativado · hoje cobra ${dinheiro(d.fee)}`;
         } else {
-          html += `ℹ️ Bairro não cadastrado · cobra a taxa padrão ${dinheiro(d.fee)}<br>${botaoCadastrar(d.neighborhood)}`;
+          html += bairroNaoCadastrado(d, cep, `Hoje este CEP paga a taxa padrão (${dinheiro(d.fee)})`);
         }
         caixa.innerHTML = html;
       } catch (erro) {
@@ -567,18 +614,32 @@
             `📍 ${rua}<strong>${escapar(d.neighborhood)}</strong> — ${escapar(d.city)}/${escapar(d.state)}<br>` +
             (d.zone
               ? `⚠️ Bairro "${escapar(d.zone.name)}" está desativado · hoje não entregamos aqui`
-              : `❌ Bairro não cadastrado e sem taxa padrão · hoje não entregamos aqui<br>${botaoCadastrar(d.neighborhood)}`);
+              : bairroNaoCadastrado(d, cep, "Sem taxa padrão, hoje não entregamos neste CEP"));
         } else if (erro.message !== "401") {
           caixa.textContent = erro.message;
         }
       }
     });
 
-    document.getElementById("resultado-cep").addEventListener("click", (evento) => {
-      const botao = evento.target.closest("#cadastrar-bairro");
-      if (!botao) return;
-      document.getElementById("novo-bairro").value = botao.dataset.nome;
-      document.getElementById("nova-taxa").focus();
+    // Cadastrar pelo CEP testado: o servidor pega o nome no ViaCEP e o bairro já nasce confirmado
+    document.getElementById("resultado-cep").addEventListener("submit", async (evento) => {
+      if (evento.target.id !== "form-cadastrar") return;
+      evento.preventDefault();
+
+      const fee = lerTaxa(document.getElementById("taxa-cep").value);
+      if (Number.isNaN(fee)) return statusBairro("Taxa inválida. Use, por exemplo, 6,00.", "erro");
+
+      try {
+        const zona = await api("/delivery-zones", {
+          method: "POST",
+          body: JSON.stringify({ cep: evento.target.dataset.cep, fee }),
+        });
+        statusBairro(`Bairro "${zona.name}" cadastrado e confirmado.`, "ok");
+        await carregarBairros();
+        document.getElementById("form-teste-cep").requestSubmit(); // testa de novo: agora aparece ✅
+      } catch (erro) {
+        if (erro.message !== "401") statusBairro(erro.message, "erro");
+      }
     });
 
     // ---------- Entrar e sair ----------

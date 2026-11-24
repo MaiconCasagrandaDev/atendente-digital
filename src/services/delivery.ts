@@ -58,6 +58,16 @@ export async function quoteDelivery(cep: string, typedNeighborhood?: string): Pr
   const match = feeFor(zones, neighborhood, defaultFee());
   if (!match) return { ok: false, reason: "not_served", address };
 
+  // Primeira vez que um CEP cai neste bairro: o nome bate com o dos Correios.
+  // Só vale quando o bairro veio do ViaCEP (no CEP geral, ele foi digitado pelo cliente).
+  // Se a gravação falhar, a cotação segue: o cliente não pode ficar sem resposta por isso.
+  const zone = address.neighborhood ? zones.find((z) => z.key === normalizeText(address.neighborhood)) : undefined;
+  if (zone && !zone.verifiedAt) {
+    await prisma.deliveryZone
+      .update({ where: { id: zone.id }, data: { verifiedAt: new Date() } })
+      .catch((error) => console.warn("Não foi possível marcar o bairro como confirmado:", error));
+  }
+
   return { ok: true, address, neighborhood: match.name, fee: match.fee };
 }
 

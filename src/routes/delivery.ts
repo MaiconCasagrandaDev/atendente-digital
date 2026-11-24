@@ -3,8 +3,9 @@ import { Prisma } from "../generated/prisma/client";
 import { prisma } from "../lib/prisma";
 import { AppError } from "../lib/errors";
 import { normalizeText } from "../lib/text";
+import { cityNeighborhoods, findNeighborhood } from "../lib/neighborhoods";
 import { parseId, validate } from "../lib/validate";
-import { updateZoneSchema, zoneSchema } from "../schemas/delivery";
+import { createZoneSchema, updateZoneSchema } from "../schemas/delivery";
 import { deliveryProblem, quoteDelivery } from "../services/delivery";
 
 export const deliveryRouter = Router();
@@ -20,6 +21,16 @@ function rethrowDuplicate(error: unknown): never {
 // GET /delivery-zones: lista os bairros
 deliveryRouter.get("/", async (_req, res) => {
   res.json(await prisma.deliveryZone.findMany({ orderBy: { name: "asc" } }));
+});
+
+// Lista de bairros da cidade da loja (data/bairros); null = sem lista
+const storeNeighborhoods = () =>
+  cityNeighborhoods(process.env.STORE_CITY ?? "", process.env.STORE_STATE ?? "");
+
+// GET /delivery-zones/known: bairros da cidade, para as sugestões do painel
+deliveryRouter.get("/known", (_req, res) => {
+  const list = storeNeighborhoods();
+  res.json({ neighborhoods: list ?? [], restricted: list !== null });
 });
 
 // GET /delivery-zones/check/:cep: mostra como o ViaCEP escreve o bairro e se ele está cadastrado
@@ -52,16 +63,46 @@ deliveryRouter.get("/check/:cep", async (req, res) => {
   res.json({ ok: true, ...details, fee: quote.fee.toFixed(2) });
 });
 
-// POST /delivery-zones: cadastra um bairro
+// POST /delivery-zones: cadastra um bairro pelo nome ou pelo CEP
 deliveryRouter.post("/", async (req, res) => {
-  const { name, fee } = validate(zoneSchema, req.body);
+  const data = validate(createZoneSchema, req.body);
+
+  let name = data.name ?? "";
+  let verifiedAt: Date | null = null;
+
+  // Pelo CEP: o nome vem do ViaCEP, então o bairro já nasce confirmado.
+  // "not_served" é justamente o bairro que ainda não está na lista: esse pode cadastrar.
+  if (data.cep) {
+    const quote = await quoteDelivery(data.cep);
+    if (!quote.ok && quote.reason !== "not_served") {
+      const problem = deliveryProblem(quote);
+      throw new AppError(problem.status, problem.message);
+    }
+    name = quote.address?.neighborhood ?? "";
+    if (!name) throw new AppError(400, "Este CEP não informa o bairro. Cadastre pelo nome.");
+    verifiedAt = new Date();
+  } else {
+    // Pelo nome: se a cidade tem lista de bairros, o nome precisa estar nela (e fica com a grafia dela)
+    const list = storeNeighborhoods();
+    if (list) {
+      const found = findNeighborhood(list, name);
+      if (!found) {
+        throw new AppError(
+          400,
+          "Bairro não encontrado na lista da cidade. Confira o nome ou teste o CEP de uma rua do bairro.",
+        );
+      }
+      name = found;
+    }
+  }
+
   const zone = await prisma.deliveryZone
-    .create({ data: { name, key: normalizeText(name), fee } })
+    .create({ data: { name, key: normalizeText(name), fee: data.fee, verifiedAt } })
     .catch(rethrowDuplicate);
   res.status(201).json(zone);
 });
 
-// PATCH /delivery-zones/:id: edita nome, taxa ou ativa/desativa
+// PATCH /delivery-zones/:id: edita a taxa ou ativa/desativa (o nome não muda)
 deliveryRouter.patch("/:id", async (req, res) => {
   const id = parseId(req.params.id);
   const data = validate(updateZoneSchema, req.body);
@@ -69,13 +110,7 @@ deliveryRouter.patch("/:id", async (req, res) => {
   const exists = await prisma.deliveryZone.findUnique({ where: { id } });
   if (!exists) throw new AppError(404, "Bairro não encontrado");
 
-  const zone = await prisma.deliveryZone
-    .update({
-      where: { id },
-      data: { ...data, ...(data.name ? { key: normalizeText(data.name) } : {}) },
-    })
-    .catch(rethrowDuplicate);
-  res.json(zone);
+  res.json(await prisma.deliveryZone.update({ where: { id }, data }));
 });
 
 // DELETE /delivery-zones/:id: exclui um bairro (os pedidos antigos guardam o endereço e a taxa)

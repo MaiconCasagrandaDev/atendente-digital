@@ -125,6 +125,7 @@ model DeliveryZone {
   key       String   @unique  // nome sem acento e minúsculo: "sao bento"
   fee       Decimal  @db.Decimal(10, 2)
   active    Boolean  @default(true)
+  verifiedAt DateTime?        // quando um CEP caiu neste bairro pela primeira vez
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
