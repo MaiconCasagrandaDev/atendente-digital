@@ -360,9 +360,12 @@
           ? `<div class="tipo">🛵 Entrega</div><div class="linha">📍 ${escapar(p.address)}</div>`
           : `<div class="tipo">🏪 Retirada</div>`;
 
-      const troco =
-        p.paymentMethod === "CASH" && p.changeFor
-          ? ` · troco para ${dinheiro(p.changeFor)} (levar ${dinheiro(Number(p.changeFor) - Number(p.total))})`
+      // Dinheiro: destaque do troco para o entregador
+      const linhaTroco =
+        p.paymentMethod === "CASH"
+          ? p.changeFor && Number(p.changeFor) > Number(p.total)
+            ? `💵 Levar troco: <strong>${dinheiro(Number(p.changeFor) - Number(p.total))}</strong> (cliente paga com ${dinheiro(p.changeFor)})`
+            : "💵 Sem troco (valor exato)"
           : "";
 
       const prox = proximo(p);
@@ -381,7 +384,8 @@
           ${entrega}
           <ul class="itens">${itens}</ul>
           ${p.notes ? `<div class="linha">📝 ${escapar(p.notes)}</div>` : ""}
-          <div class="linha">💳 ${PAGAMENTO[p.paymentMethod] ?? "—"}${troco}</div>
+          <div class="linha">💳 ${PAGAMENTO[p.paymentMethod] ?? "—"}</div>
+          ${linhaTroco ? `<div class="linha">${linhaTroco}</div>` : ""}
           ${Number(p.deliveryFee) > 0 ? `<div class="linha">🛵 Taxa de entrega: ${dinheiro(p.deliveryFee)}</div>` : ""}
           <div class="total">Total: ${dinheiro(p.total)}</div>
           ${botoes ? `<div class="acoes">${botoes}</div>` : ""}

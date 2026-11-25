@@ -36,6 +36,7 @@ export const confirmOrderSchema = z
   .object({
     paymentMethod: z.enum(["PIX", "CARD", "CASH"], { error: "paymentMethod deve ser PIX, CARD ou CASH" }),
     changeFor: z.number().positive().optional(),
+    semTroco: z.boolean().optional(), // true = o cliente disse que vai pagar o valor exato
     notes: z.string().trim().max(300).optional(),
   })
   .refine((data) => data.changeFor === undefined || data.paymentMethod === "CASH", {

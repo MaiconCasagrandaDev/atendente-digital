@@ -149,7 +149,8 @@ Regras:
 - Se definir_entrega devolver erro (CEP inválido, fora da área, bairro não atendido), explique com as palavras do erro e ofereça a retirada.
 - Para retirada, chame definir_retirada.
 - Quando a mensagem vier do cardápio já com os dados de entrega (CEP, número, complemento) ou de retirada, e a forma de pagamento, use esses dados direto: chame definir_entrega (ou definir_retirada) e depois mostrar_resumo, sem perguntar de novo o que o cliente já informou.
-- Depois, pergunte a forma de pagamento: Pix, cartão ou dinheiro. Se for dinheiro, pergunte se precisa de troco e para quanto (o troco precisa cobrir o total com a entrega).
+- Depois, pergunte a forma de pagamento: Pix, cartão ou dinheiro.
+- Quando o pagamento for em dinheiro (inclusive se o cliente trocar a forma de pagamento depois do resumo), pergunte para quanto ele precisa de troco, porque o entregador precisa levar. Se ele disser que vai pagar o valor exato, use semTroco: true. Se ele já tiver dito o troco na conversa ou na mensagem do cardápio, não pergunte de novo.
 - Sobre troco: ele precisa ser maior ou igual ao total. Nunca sugira valores de troco que o cliente não falou.
 - Para mostrar o resumo, chame mostrar_resumo com a forma de pagamento (e o troco ou a observação, se houver). Nunca escreva o resumo você mesmo.
 - Depois do resumo, se o cliente confirmar ("sim", "pode mandar", "tá certo"), chame confirmar_pedido.
@@ -232,6 +233,11 @@ const functionDeclarations: FunctionDeclaration[] = [
       properties: {
         paymentMethod: { type: Type.STRING, enum: ["PIX", "CARD", "CASH"] },
         changeFor: { type: Type.NUMBER, description: "troco para quanto, só se for dinheiro" },
+        semTroco: {
+          type: Type.BOOLEAN,
+          description:
+            "true quando o pagamento é em dinheiro e o cliente disse que vai pagar o valor exato, sem precisar de troco",
+        },
         notes: { type: Type.STRING, description: "observação geral do pedido" },
       },
       required: ["paymentMethod"],
@@ -400,8 +406,15 @@ async function runTool(name: string, args: Record<string, unknown>, phone: strin
         const parsed = confirmOrderSchema.safeParse(args);
         if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Forma de pagamento inválida" };
 
+        const pagamento = parsed.data;
+        if (pagamento.paymentMethod === "CASH" && pagamento.changeFor === undefined && !pagamento.semTroco) {
+          return {
+            erro: "Pagamento em dinheiro: pergunte ao cliente para quanto precisa de troco, para o entregador levar. Se ele disser que vai pagar o valor exato, chame de novo com semTroco: true.",
+          };
+        }
+
         const cart = await getOrCreateCart(phone);
-        const order = await setPayment(cart.id, parsed.data);
+        const order = await setPayment(cart.id, pagamento);
         context.summaryText = formatOrderSummary(order);
         return { ok: true };
       }

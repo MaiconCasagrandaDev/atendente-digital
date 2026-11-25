@@ -49,10 +49,15 @@ describe("formatOrderSummary", () => {
     });
     expect(texto).toContain("Subtotal: R$ 61,00");
     expect(texto).toContain("🏪 Retirada no balcão");
-    expect(texto).toContain("💳 Pagamento: Dinheiro (troco para R$ 100,00)");
+    expect(texto).toContain("💳 Pagamento: Dinheiro (troco para R$ 100,00 · levar R$ 39,00 de troco)");
     expect(texto).toContain("*Total: R$ 61,00*");
     expect(texto).not.toContain("Taxa de entrega");
     expect(texto).not.toContain("Endereço");
+  });
+
+  it("dinheiro sem troco: avisa que é o valor exato", () => {
+    const texto = resumo({ ...base, paymentMethod: "CASH", changeFor: null });
+    expect(texto).toContain("💳 Pagamento: Dinheiro (sem troco, valor exato)");
   });
 
   it("mostra a observação do item e a do pedido", () => {

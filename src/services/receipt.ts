@@ -17,6 +17,15 @@ export function money(value: Prisma.Decimal | number) {
   return Number(value).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+// Dinheiro: mostra o troco já calculado para o entregador
+export function cashLine(total: number, changeFor: number | null) {
+  if (changeFor && changeFor > total) {
+    const levar = Math.round((changeFor - total) * 100) / 100;
+    return `Dinheiro (troco para ${money(changeFor)} · levar ${money(levar)} de troco)`;
+  }
+  return "Dinheiro (sem troco, valor exato)";
+}
+
 function section(title: string) {
   return [LINE, title, LINE];
 }
@@ -44,11 +53,11 @@ export function formatOrderReceipt(order: OrderWithItems) {
   lines.push("");
 
   lines.push(...section("💰 *PAGAMENTO*"));
-  lines.push(`Forma de pagamento: ${paymentLabels[order.paymentMethod ?? ""] ?? "não informada"}`);
-  if (order.changeFor) {
-    const change = order.changeFor.minus(order.total);
-    lines.push(`Troco para ${money(order.changeFor)} (levar ${money(change)} de troco)`);
-  }
+  const formaPagamento =
+    order.paymentMethod === "CASH"
+      ? cashLine(Number(order.total), order.changeFor ? Number(order.changeFor) : null)
+      : (paymentLabels[order.paymentMethod ?? ""] ?? "não informada");
+  lines.push(`Forma de pagamento: ${formaPagamento}`);
   lines.push("");
   if (Number(order.deliveryFee) > 0) {
     lines.push(`Subtotal: ${money(order.total.minus(order.deliveryFee))}`);

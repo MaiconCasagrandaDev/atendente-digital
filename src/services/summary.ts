@@ -1,7 +1,7 @@
 import { prisma } from "../lib/prisma";
 import { AppError } from "../lib/errors";
 import { describeHours, isStoreOpen } from "../lib/hours";
-import { money } from "./receipt";
+import { cashLine, money } from "./receipt";
 import { confirmOrder, getOrCreateCart, getOrder } from "./orders";
 
 type Valor = { toString(): string } | number | string;
@@ -37,9 +37,10 @@ export function formatOrderSummary(order: SummaryOrder) {
     linhas.push("🏪 Retirada no balcão");
   }
 
-  if (order.paymentMethod) {
-    const troco = order.changeFor ? ` (troco para ${money(Number(order.changeFor))})` : "";
-    linhas.push(`💳 Pagamento: ${NOMES_PAGAMENTO[order.paymentMethod]}${troco}`);
+  if (order.paymentMethod === "CASH") {
+    linhas.push(`💳 Pagamento: ${cashLine(total, order.changeFor ? Number(order.changeFor) : null)}`);
+  } else if (order.paymentMethod) {
+    linhas.push(`💳 Pagamento: ${NOMES_PAGAMENTO[order.paymentMethod]}`);
   }
   if (order.notes) linhas.push(`📝 Observação: ${order.notes}`);
 

@@ -312,6 +312,8 @@
       cursor: pointer;
     }
     .resultados .desc { font-size: 13px; color: #666; }
+    .bloco label.check { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+    .bloco label.check input { width: auto; margin: 0; }
   </style>
 </head>
 <body>
@@ -397,9 +399,14 @@
           <button type="button" data-pagamento="CARD">Cartão</button>
           <button type="button" data-pagamento="CASH">Dinheiro</button>
         </div>
-        <label id="campo-troco" hidden>Troco para quanto? (opcional)
-          <input id="troco" inputmode="decimal" placeholder="ex.: 100" />
-        </label>
+        <div id="campo-troco" hidden>
+          <label>Troco para quanto?
+            <input id="troco" inputmode="decimal" placeholder="ex.: 100" />
+          </label>
+          <label class="check">
+            <input type="checkbox" id="sem-troco" /> Não preciso de troco (vou pagar o valor exato)
+          </label>
+        </div>
         <p id="troco-status" class="status"></p>
       </section>
 
@@ -830,6 +837,12 @@
       $(id).addEventListener("input", atualizarCheckout);
     }
 
+    $("sem-troco").addEventListener("change", () => {
+      $("troco").disabled = $("sem-troco").checked;
+      if ($("sem-troco").checked) $("troco").value = "";
+      atualizarCheckout();
+    });
+
     function valorTroco() {
       const texto = $("troco").value.trim().replace(",", ".");
       return texto ? Number(texto) : null;
@@ -850,11 +863,18 @@
       $("t-taxa").textContent = dinheiro(taxa());
       $("t-total").textContent = dinheiro(total());
 
-      // Troco precisa cobrir o total com a entrega
+      // Dinheiro: precisa do valor do troco OU de "valor exato"
       const troco = pagamento === "CASH" ? valorTroco() : null;
+      const semTroco = pagamento === "CASH" && $("sem-troco").checked;
       const trocoInvalido = troco !== null && (!Number.isFinite(troco) || troco < total());
-      $("troco-status").textContent = trocoInvalido ? `O troco precisa ser de pelo menos ${dinheiro(total())}.` : "";
-      $("troco-status").className = "status erro";
+      const faltaTroco = pagamento === "CASH" && !semTroco && troco === null;
+
+      $("troco-status").textContent = trocoInvalido
+        ? `O troco precisa ser de pelo menos ${dinheiro(total())}.`
+        : faltaTroco
+          ? "Informe o valor para o troco ou marque que vai pagar o valor exato."
+          : "";
+      $("troco-status").className = "status " + (trocoInvalido ? "erro" : "");
 
       const enderecoOk =
         entrega === "PICKUP" ||
@@ -863,7 +883,7 @@
           NUMERO_VALIDO.test($("numero").value.trim()) &&
           (!cepGeral || ($("rua").value.trim().length >= 3 && $("bairro").value.trim().length >= 2)));
 
-      const pronto = carrinho.size > 0 && enderecoOk && pagamento && !trocoInvalido;
+      const pronto = carrinho.size > 0 && enderecoOk && pagamento && !trocoInvalido && !faltaTroco;
       $("enviar").disabled = !pronto;
       $("enviar").textContent = pronto ? `Enviar pedido · ${dinheiro(total())}` : "Enviar pedido";
     }
@@ -897,7 +917,9 @@
       }
 
       const troco = pagamento === "CASH" ? valorTroco() : null;
-      partes.push("", `💳 Pagamento: ${NOMES_PAGAMENTO[pagamento]}${troco ? `, troco para ${dinheiro(troco)}` : ""}`);
+      const detalheTroco =
+        pagamento === "CASH" ? (troco ? `, troco para ${dinheiro(troco)}` : ", sem troco (valor exato)") : "";
+      partes.push("", `💳 Pagamento: ${NOMES_PAGAMENTO[pagamento]}${detalheTroco}`);
 
       window.location.href = linkPedido + encodeURIComponent(partes.join("\n"));
     });
